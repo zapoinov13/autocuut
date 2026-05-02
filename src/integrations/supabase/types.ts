@@ -14,16 +14,205 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          created_at: string
+          duration: number | null
+          error_message: string | null
+          id: string
+          status: Database["public"]["Enums"]["project_status"]
+          style: string
+          thumbnail_url: string | null
+          title: string
+          title_suggestion: string | null
+          updated_at: string
+          user_id: string
+          video_path: string | null
+          video_url: string | null
+          viral_score: number | null
+        }
+        Insert: {
+          created_at?: string
+          duration?: number | null
+          error_message?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["project_status"]
+          style?: string
+          thumbnail_url?: string | null
+          title?: string
+          title_suggestion?: string | null
+          updated_at?: string
+          user_id: string
+          video_path?: string | null
+          video_url?: string | null
+          viral_score?: number | null
+        }
+        Update: {
+          created_at?: string
+          duration?: number | null
+          error_message?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["project_status"]
+          style?: string
+          thumbnail_url?: string | null
+          title?: string
+          title_suggestion?: string | null
+          updated_at?: string
+          user_id?: string
+          video_path?: string | null
+          video_url?: string | null
+          viral_score?: number | null
+        }
+        Relationships: []
+      }
+      scenes: {
+        Row: {
+          created_at: string
+          end_time: number
+          highlight_words: Json
+          id: string
+          is_hook: boolean
+          order_index: number
+          project_id: string
+          start_time: number
+          text: string
+          user_id: string
+          zoom: string
+        }
+        Insert: {
+          created_at?: string
+          end_time: number
+          highlight_words?: Json
+          id?: string
+          is_hook?: boolean
+          order_index?: number
+          project_id: string
+          start_time: number
+          text?: string
+          user_id: string
+          zoom?: string
+        }
+        Update: {
+          created_at?: string
+          end_time?: number
+          highlight_words?: Json
+          id?: string
+          is_hook?: boolean
+          order_index?: number
+          project_id?: string
+          start_time?: number
+          text?: string
+          user_id?: string
+          zoom?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scenes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subtitles: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          user_id: string
+          words: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          user_id: string
+          words?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+          words?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subtitles_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      project_status:
+        | "uploading"
+        | "transcribing"
+        | "analyzing"
+        | "ready"
+        | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +339,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      project_status: [
+        "uploading",
+        "transcribing",
+        "analyzing",
+        "ready",
+        "failed",
+      ],
+    },
   },
 } as const
