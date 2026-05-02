@@ -1,1 +1,7 @@
 project_id = "zyfdxjtmbhwuhwklflbw"
+
+[functions.transcribe-video]
+verify_jwt = true
+
+[functions.analyze-scenes]
+verify_jwt = true
