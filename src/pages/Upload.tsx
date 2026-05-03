@@ -124,6 +124,10 @@ const Upload = () => {
             console.error("transcribe error", error);
             return;
           }
+          if (data && data.success === false) {
+            console.error("transcribe handled error", data.error);
+            return;
+          }
           // Chain analysis
           supabase.functions.invoke("analyze-scenes", { body: { project_id: project.id } });
         });

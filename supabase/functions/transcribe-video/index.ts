@@ -148,13 +148,16 @@ Deno.serve(async (req) => {
       const errText = await scribeRes.text();
       console.error("Scribe error:", scribeRes.status, errText);
       let friendly = `Транскрипция не удалась (${scribeRes.status})`;
+      let code = "ELEVENLABS_API_ERROR";
       try {
         const j = JSON.parse(errText);
         const status = j?.detail?.status;
         const message = j?.detail?.message ?? j?.detail ?? errText;
         if (status === "quota_exceeded") {
+          code = "ELEVENLABS_QUOTA_EXCEEDED";
           friendly = `На ключе ElevenLabs не хватает кредитов для этого видео. ${typeof message === "string" ? message : "Пополните ElevenLabs или обновите API ключ."}`;
         } else if (status === "detected_unusual_activity") {
+          code = "ELEVENLABS_FREE_TIER_DISABLED";
           friendly = "ElevenLabs отключил Free Tier для этого ключа из-за unusual activity. Нужен платный ElevenLabs-план или новый API ключ.";
         } else if (typeof message === "string") {
           friendly = `ElevenLabs: ${message.slice(0, 200)}`;
@@ -163,7 +166,10 @@ Deno.serve(async (req) => {
         friendly = `${friendly}: ${errText.slice(0, 200)}`;
       }
       await markProjectFailed(admin, project_id, friendly);
-      throw new Error(friendly);
+      return new Response(JSON.stringify({ success: false, fallback: true, code, error: friendly }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const transcript: ScribeResponse = await scribeRes.json();

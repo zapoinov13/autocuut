@@ -83,6 +83,11 @@ const Processing = () => {
       toast.error("Не удалось перезапустить", { description: tErr.message });
       return;
     }
+    const { data: freshProject } = await supabase.from("projects").select("status, error_message").eq("id", id).single();
+    if (freshProject?.status === "failed") {
+      setError(freshProject.error_message ?? "Распознавание не удалось");
+      return;
+    }
     await supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
   };
 
