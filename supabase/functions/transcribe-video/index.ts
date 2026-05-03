@@ -26,6 +26,8 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let projectIdForError: string | null = null;
+  let adminForError: ReturnType<typeof createClient> | null = null;
   try {
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
