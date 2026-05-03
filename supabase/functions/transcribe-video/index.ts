@@ -21,6 +21,22 @@ interface ScribeResponse {
   language_code?: string;
 }
 
+const markProjectFailed = async (
+  admin: ReturnType<typeof createClient> | null,
+  projectId: string | null,
+  message: string,
+) => {
+  if (!admin || !projectId) return;
+  const { error } = await admin
+    .from("projects")
+    .update({ status: "failed", error_message: message })
+    .eq("id", projectId);
+
+  if (error) {
+    console.error("Failed to mark project as failed:", error.message);
+  }
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -137,13 +153,16 @@ Deno.serve(async (req) => {
         const status = j?.detail?.status;
         const message = j?.detail?.message ?? j?.detail ?? errText;
         if (status === "quota_exceeded") {
-          friendly = "Закончились кредиты ElevenLabs. Пополните баланс или обновите API ключ.";
+          friendly = `На ключе ElevenLabs не хватает кредитов для этого видео. ${typeof message === "string" ? message : "Пополните ElevenLabs или обновите API ключ."}`;
+        } else if (status === "detected_unusual_activity") {
+          friendly = "ElevenLabs отключил Free Tier для этого ключа из-за unusual activity. Нужен платный ElevenLabs-план или новый API ключ.";
         } else if (typeof message === "string") {
           friendly = `ElevenLabs: ${message.slice(0, 200)}`;
         }
       } catch (_) {
         friendly = `${friendly}: ${errText.slice(0, 200)}`;
       }
+      await markProjectFailed(admin, project_id, friendly);
       throw new Error(friendly);
     }
 
@@ -175,11 +194,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
     console.error("transcribe-video error:", msg);
-    if (adminForError && projectIdForError) {
-      try {
-        await adminForError.from("projects").update({ status: "failed", error_message: msg }).eq("id", projectIdForError);
-      } catch (_) { /* ignore */ }
-    }
+    await markProjectFailed(adminForError, projectIdForError, msg);
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
