@@ -69,8 +69,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Service-role client to bypass RLS for status updates and storage
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+    adminForError = admin;
+    projectIdForError = project_id;
 
     const { data: project, error: projErr } = await admin
       .from("projects")
