@@ -1,15 +1,33 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Plus, Video, LogOut, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sparkles, Plus, Video, LogOut, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { formatDuration } from "@/lib/format";
+import { toast } from "sonner";
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
+  const qc = useQueryClient();
+  const [renameProject, setRenameProject] = useState<{ id: string; title: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteProject, setDeleteProject] = useState<{ id: string; title: string; video_path?: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ["projects", user?.id],
@@ -30,6 +48,43 @@ const Dashboard = () => {
     analyzing: { label: "AI-анализ", className: "bg-primary/20 text-primary" },
     ready: { label: "Готово", className: "bg-success/20 text-success" },
     failed: { label: "Ошибка", className: "bg-destructive/20 text-destructive" },
+  };
+
+  const handleRename = async () => {
+    if (!renameProject || !renameValue.trim()) return;
+    setBusy(true);
+    const { error } = await supabase
+      .from("projects")
+      .update({ title: renameValue.trim() })
+      .eq("id", renameProject.id);
+    setBusy(false);
+    if (error) {
+      toast.error("Не удалось переименовать");
+    } else {
+      toast.success("Название обновлено");
+      setRenameProject(null);
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteProject) return;
+    setBusy(true);
+    // Best-effort delete of related rows + storage object
+    await supabase.from("scenes").delete().eq("project_id", deleteProject.id);
+    await supabase.from("subtitles").delete().eq("project_id", deleteProject.id);
+    if (deleteProject.video_path) {
+      await supabase.storage.from("videos").remove([deleteProject.video_path]);
+    }
+    const { error } = await supabase.from("projects").delete().eq("id", deleteProject.id);
+    setBusy(false);
+    if (error) {
+      toast.error("Не удалось удалить проект");
+    } else {
+      toast.success("Проект удалён");
+      setDeleteProject(null);
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    }
   };
 
   return (
@@ -113,9 +168,38 @@ const Dashboard = () => {
                 const status = statusLabel[p.status] ?? statusLabel.uploading;
                 const link = p.status === "ready" ? `/editor/${p.id}` : `/processing/${p.id}`;
                 return (
-                  <Link key={p.id} to={link}>
-                    <Card className="overflow-hidden bg-gradient-card border-border/60 hover:border-primary/40 transition-smooth cursor-pointer">
-                      <div className="aspect-[9/16] bg-surface-2 relative overflow-hidden">
+                  <Card key={p.id} className="overflow-hidden bg-gradient-card border-border/60 hover:border-primary/40 transition-smooth relative group">
+                    <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="secondary" size="icon" className="h-7 w-7 bg-black/60 hover:bg-black/80 border-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setRenameValue(p.title);
+                              setRenameProject({ id: p.id, title: p.title });
+                            }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" /> Переименовать
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setDeleteProject({ id: p.id, title: p.title, video_path: p.video_path });
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> Удалить
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <Link to={link}>
+                      <div className="aspect-[9/16] bg-surface-2 relative overflow-hidden cursor-pointer">
                         {p.thumbnail_url ? (
                           <img src={p.thumbnail_url} alt={p.title} className="w-full h-full object-cover" />
                         ) : (
@@ -141,14 +225,58 @@ const Dashboard = () => {
                           </div>
                         )}
                       </div>
-                    </Card>
-                  </Link>
+                    </Link>
+                  </Card>
                 );
               })}
             </div>
           )}
         </section>
       </main>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameProject} onOpenChange={(open) => !open && setRenameProject(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Переименовать проект</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder="Название проекта"
+            onKeyDown={(e) => e.key === "Enter" && handleRename()}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRenameProject(null)}>Отмена</Button>
+            <Button onClick={handleRename} disabled={busy || !renameValue.trim()}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm */}
+      <AlertDialog open={!!deleteProject} onOpenChange={(open) => !open && setDeleteProject(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить проект?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Проект «{deleteProject?.title}» и все связанные данные (сцены, субтитры, видеофайл) будут удалены безвозвратно.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Удалить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
