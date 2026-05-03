@@ -175,6 +175,11 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
     console.error("transcribe-video error:", msg);
+    if (adminForError && projectIdForError) {
+      try {
+        await adminForError.from("projects").update({ status: "failed", error_message: msg }).eq("id", projectIdForError);
+      } catch (_) { /* ignore */ }
+    }
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
