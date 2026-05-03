@@ -131,7 +131,20 @@ Deno.serve(async (req) => {
     if (!scribeRes.ok) {
       const errText = await scribeRes.text();
       console.error("Scribe error:", scribeRes.status, errText);
-      throw new Error(`Транскрипция не удалась (${scribeRes.status}): ${errText.slice(0, 200)}`);
+      let friendly = `Транскрипция не удалась (${scribeRes.status})`;
+      try {
+        const j = JSON.parse(errText);
+        const status = j?.detail?.status;
+        const message = j?.detail?.message ?? j?.detail ?? errText;
+        if (status === "quota_exceeded") {
+          friendly = "Закончились кредиты ElevenLabs. Пополните баланс или обновите API ключ.";
+        } else if (typeof message === "string") {
+          friendly = `ElevenLabs: ${message.slice(0, 200)}`;
+        }
+      } catch (_) {
+        friendly = `${friendly}: ${errText.slice(0, 200)}`;
+      }
+      throw new Error(friendly);
     }
 
     const transcript: ScribeResponse = await scribeRes.json();
