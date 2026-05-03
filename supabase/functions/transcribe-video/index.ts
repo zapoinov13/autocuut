@@ -26,6 +26,8 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let projectIdForError: string | null = null;
+  let adminForError: ReturnType<typeof createClient> | null = null;
   try {
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -67,8 +69,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Service-role client to bypass RLS for status updates and storage
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+    adminForError = admin;
+    projectIdForError = project_id;
 
     const { data: project, error: projErr } = await admin
       .from("projects")
@@ -128,7 +131,20 @@ Deno.serve(async (req) => {
     if (!scribeRes.ok) {
       const errText = await scribeRes.text();
       console.error("Scribe error:", scribeRes.status, errText);
-      throw new Error(`Транскрипция не удалась (${scribeRes.status}): ${errText.slice(0, 200)}`);
+      let friendly = `Транскрипция не удалась (${scribeRes.status})`;
+      try {
+        const j = JSON.parse(errText);
+        const status = j?.detail?.status;
+        const message = j?.detail?.message ?? j?.detail ?? errText;
+        if (status === "quota_exceeded") {
+          friendly = "Закончились кредиты ElevenLabs. Пополните баланс или обновите API ключ.";
+        } else if (typeof message === "string") {
+          friendly = `ElevenLabs: ${message.slice(0, 200)}`;
+        }
+      } catch (_) {
+        friendly = `${friendly}: ${errText.slice(0, 200)}`;
+      }
+      throw new Error(friendly);
     }
 
     const transcript: ScribeResponse = await scribeRes.json();
@@ -159,6 +175,11 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
     console.error("transcribe-video error:", msg);
+    if (adminForError && projectIdForError) {
+      try {
+        await adminForError.from("projects").update({ status: "failed", error_message: msg }).eq("id", projectIdForError);
+      } catch (_) { /* ignore */ }
+    }
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

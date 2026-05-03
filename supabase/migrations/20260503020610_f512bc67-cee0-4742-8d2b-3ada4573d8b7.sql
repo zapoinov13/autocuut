@@ -1,0 +1,1 @@
+UPDATE public.projects SET status='failed', error_message='Закончились кредиты ElevenLabs. Пополните баланс или обновите API ключ.' WHERE status IN ('uploading','transcribing','analyzing') AND updated_at < now() - interval '1 minute';
