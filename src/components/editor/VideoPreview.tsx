@@ -198,7 +198,7 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
             <Slider value={[muted ? 0 : volume]} min={0} max={1} step={0.05} onValueChange={handleVolume} />
           </div>
           <span className="text-xs font-mono ml-1 tabular-nums">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {formatDuration(currentTime)} / {formatDuration(duration)}
           </span>
           <div className="ml-auto">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/15 hover:text-white" onClick={fullscreen}>
