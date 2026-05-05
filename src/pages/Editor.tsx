@@ -240,7 +240,12 @@ const Editor = () => {
 
           {/* Video */}
           {videoUrl ? (
-            <VideoPreview videoUrl={videoUrl} styleId={styleId} words={words} scenes={scenes as any} />
+            <VideoPreview
+              videoUrl={videoUrl}
+              subtitleStyle={styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)}
+              words={words}
+              scenes={scenes as any}
+            />
           ) : (
             <div className="aspect-[9/16] bg-surface-1 rounded-2xl flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
