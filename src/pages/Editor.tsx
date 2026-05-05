@@ -196,31 +196,11 @@ const Editor = () => {
         <div className="flex flex-col gap-3">
           {/* Preview tools row */}
           <div className="flex items-center justify-end gap-2 flex-wrap">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9">
-                  <Palette className="mr-2 h-4 w-4" />
-                  Стиль
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 p-2">
-                {STYLE_LIST.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => handleStyleChange(s.id)}
-                    className={`w-full text-left p-2 rounded-md hover:bg-accent flex items-center gap-3 ${
-                      styleId === s.id ? "bg-accent" : ""
-                    }`}
-                  >
-                    <span className="text-xl">{s.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{s.name}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-1">{s.description}</p>
-                    </div>
-                  </button>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <StylePanel
+              styleId={styleId}
+              onPick={handleStyleChange}
+              onCustomChange={setCustomStyle}
+            />
             <Button variant="outline" size="sm" className="h-9">
               <Music className="mr-2 h-4 w-4" />
               Аудио
