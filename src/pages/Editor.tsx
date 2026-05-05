@@ -24,6 +24,7 @@ const Editor = () => {
   const qc = useQueryClient();
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
