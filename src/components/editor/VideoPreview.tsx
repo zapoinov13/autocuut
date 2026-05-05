@@ -3,7 +3,7 @@ import { Play, Pause, Volume2, VolumeX, Maximize2, RotateCcw } from "lucide-reac
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { SubtitleStyle } from "@/lib/styles";
-import { formatTime } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 
 interface Word { text: string; start: number; end: number; }
 interface Scene { id: string; start_time: number; end_time: number; zoom: string; highlight_words: string[]; }
