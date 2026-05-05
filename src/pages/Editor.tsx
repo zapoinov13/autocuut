@@ -13,7 +13,8 @@ import {
   Type, MoreHorizontal, Anchor, Mic, Palette,
 } from "lucide-react";
 import { VideoPreview } from "@/components/editor/VideoPreview";
-import { STYLES, STYLE_LIST, StyleId } from "@/lib/styles";
+import { StylePanel } from "@/components/editor/StylePanel";
+import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
 import { formatTime } from "@/lib/format";
 import { toast } from "sonner";
 
