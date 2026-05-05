@@ -57,8 +57,8 @@ const Editor = () => {
     toast.success(`Стиль изменён на ${STYLES[newStyle].name}`);
   };
 
-  const toggleProjectField = async (field: string, value: boolean) => {
-    await supabase.from("projects").update({ [field]: value }).eq("id", id!);
+  const toggleProjectField = async (field: "captions_enabled" | "clean_audio", value: boolean) => {
+    await (supabase.from("projects").update({ [field]: value }) as any).eq("id", id!);
     qc.invalidateQueries({ queryKey: ["editor", id] });
   };
 
