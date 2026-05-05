@@ -1,134 +1,95 @@
-## AI Reels Editor — MVP (браузерный прототип)
+# Submagic-style редактор
 
-Веб-приложение на русском языке: пользователь загружает вертикальное видео, система транскрибирует речь, AI делит ролик на сцены, генерирует субтитры word-by-word, расставляет зумы и хайлайт-слова под выбранный стиль. Превью воспроизводится в браузере с наложением субтитров и эффектов поверх `<video>`.
+## Цель
+Переделать `/editor/:id` так, чтобы всё помещалось на одном экране без скролла, видео было компактнее, а вокруг — кнопки, открывающие панели инструментов (как в Submagic). Добавить аудио-инструменты, музыку с громкостью, 4K-экспорт.
 
-### Что входит в MVP
+## Новый layout
 
-**1. Главный экран — Дашборд (Quick Start)**
-- Тёмная тема в стиле CapCut: фон `#0F0F12`, акцент оранжевый `#F97316`, карточки `#1A1A1F`, скругления 16px
-- Hero с CTA «Загрузить видео»
-- Блок «Быстрый старт» — карточки: AI Авто-монтаж, Магия клипов, Субтитры, Combine Videos (визуально, активна только первая)
-- Список «Мои проекты» (из БД, с превью-кадром, статусом, длительностью)
-
-**2. Загрузка видео**
-- Drag & drop + кнопка выбора файла
-- Форматы: mp4, mov, webm; лимит 500 МБ / ~10 минут (ограничение браузерной обработки)
-- Индикатор прогресса загрузки в Supabase Storage
-- Извлечение длительности и thumbnail клиентом через `<video>` + canvas
-
-**3. Выбор стиля монтажа**
-Экран с 4 карточками-превью:
-- **Viral TikTok** — быстрая нарезка, крупные жёлтые субтитры, агрессивные зумы
-- **Podcast Clips** — спокойный темп, минималистичные белые субтитры по центру
-- **Educational** — средний темп, чистые субтитры снизу, выделение терминов
-- **MrBeast Pacing** — очень быстрая нарезка, крупные капс-субтитры с обводкой, частые зумы
-
-Каждый стиль = JSON-пресет (темп, шрифт субтитров, цвет хайлайта, частота зумов, интенсивность).
-
-**4. AI-обработка (асинхронная)**
-Edge function в три этапа со статусами в БД (`uploading → transcribing → analyzing → ready`):
-
-- **Транскрипция** — ElevenLabs Scribe (`scribe_v2`, batch) с `diarize=true`, `language_code=rus`, word-level timestamps
-- **Разбивка на сцены и режиссура** — Lovable AI (`google/gemini-3-flash-preview`) с tool calling возвращает структурированный JSON:
-  ```json
-  {
-    "scenes": [
-      {"start": 0, "end": 4.2, "text": "...", "zoom": "in|out|none",
-       "highlight_words": ["важно"], "is_hook": true}
-    ],
-    "title_suggestion": "...",
-    "viral_score": 78
-  }
-  ```
-- Субтитры собираются из word-timestamps + хайлайтов из анализа
-
-Прогресс отображается в реальном времени через polling/Realtime подписку.
-
-**5. Редактор (главный экран после обработки)**
-
-Двухколоночный layout как на референсе Submagic:
-
-*Левая колонка — Сцены (60%):*
-- Список сцен с таймкодами `0.15 — 4.71`
-- Текст сцены, редактируемый по клику
-- Чипы: `Зум`, `B-roll` (визуально), `Переход`, кнопка `+`
-- Кнопка «Регенерировать сцену» (повторный AI-вызов для одной сцены)
-- Сверху: «AI Авто-зумы», «AI Авто B-roll» (тогглы)
-
-*Правая колонка — Превью (40%):*
-- Вертикальный 9:16 плеер (`<video>` + overlay div)
-- Субтитры рендерятся поверх через CSS-анимации, синхронизированы по `currentTime`
-- Активное слово хайлайтится цветом стиля
-- Эффект зума через CSS `transform: scale()` с плавным переходом
-- Контролы: play/pause, таймлайн, громкость, fullscreen
-- Кнопка «AI Тулзы» (выпадающее меню как на скриншоте: Авто-зумы, Субтитры, Hook Title, Clean Audio — с тогглами)
-- Кнопка «Аудио» (фоновая музыка из библиотеки + громкость + fade)
-
-**6. Стили субтитров**
-Меню «Стиль» открывает галерею пресетов:
-- Жирные жёлтые (TikTok)
-- Белые с чёрной обводкой (Classic)
-- Капс с тенью (MrBeast)
-- Минимал (Podcast)
-- Цветные слова (Karaoke)
-
-Каждый пресет — конфиг шрифта/цвета/анимации появления.
-
-**7. Экспорт**
-В рамках браузерного MVP:
-- Кнопка «Экспортировать» открывает модалку с выбором качества
-- Реализация через `MediaRecorder` API: воспроизводим превью в скрытом canvas с наложенными субтитрами/зумами и записываем поток
-- Скачивается webm/mp4 файл
-- Watermark «Made with AI Reels» в углу для бесплатной версии
-- Альтернатива (если MediaRecorder даст плохое качество): «Скоро» — заглушка с подпиской на Pro
-
-**8. База данных (Lovable Cloud)**
-Таблицы:
-- `projects` — id, user_id, title, video_url, thumbnail_url, duration, style, status, viral_score, created_at
-- `scenes` — id, project_id, start, end, text, zoom, highlight_words (jsonb), order
-- `subtitles` — id, project_id, words (jsonb с word/start/end)
-- `user_roles` — id, user_id, role (отдельная таблица для ролей)
-
-RLS: пользователь видит только свои проекты.
-
-**9. Аутентификация**
-Email + пароль через Lovable Cloud, без подтверждения почты (для скорости MVP). Защищённые роуты `/dashboard`, `/editor/:id`.
-
-### Структура страниц
-
-```
-/                  → Лендинг (hero, как работает, стили, CTA)
-/auth              → Вход/регистрация
-/dashboard         → Список проектов + кнопка «Новый»
-/upload            → Загрузка файла + выбор стиля
-/editor/:id        → Главный редактор (сцены + превью)
-/processing/:id    → Экран ожидания AI-обработки с прогрессом
+```text
+┌──────────── Header (Назад · Название · Экспорт 4K) ────────────┐
+├────────────────────┬────────────────────┬─────────────────────┤
+│  ЛЕВАЯ КОЛОНКА     │   ЦЕНТР (видео)    │  ПРАВАЯ КОЛОНКА     │
+│  Edit Tools        │   ~360×640px       │  AI Boost           │
+│  ┌──────────────┐  │   9:16 кадр        │  ┌────────────────┐ │
+│  │ CC Captions  │  │   с контролами     │  │ ✦ AI Captions  │ │
+│  │ ◉ Scenes     │  │                    │  │ ◉ Auto Zooms   │ │
+│  │ ✂ Trim       │  │                    │  │ ⌗ Auto B-rolls │ │
+│  └──────────────┘  │                    │  │ 🎵 Clean Audio │ │
+│  AI Tools          │                    │  │ ♪ Add Music    │ │
+│  ┌──────────────┐  │                    │  └────────────────┘ │
+│  │ ⚓ Hook      │  │                    │                     │
+│  │ 🎤 Clean Aud │  │                    │  Active panel slot  │
+│  │ 👁 Eye Cont. │  │                    │  (когда что-то      │
+│  └──────────────┘  │                    │   выбрано)          │
+└────────────────────┴────────────────────┴─────────────────────┘
 ```
 
-### Что НЕ входит в MVP (V2)
-- AI B-roll генерация (только UI-заглушка)
-- Реальный серверный рендер видео (только клиентский MediaRecorder)
-- Удаление пауз, Clean Audio, Correct Eye Contact (только тогглы в UI)
-- Командная работа, API, авто-постинг
-- Платежи / тарифы (только UI)
-- Magic Clips (нарезка длинного видео на много шортсов)
+- 3-колоночный grid: `260px | 1fr | 320px`. На lg+ всё помещается в `100vh - header`.
+- Видео-превью: `max-height: calc(100vh - 200px)`, ширина авто, `aspect-ratio: 9/16`. Это даёт компактный кадр ~360×640 на FullHD.
+- Без вертикального скролла страницы — скроллятся только внутренние панели.
 
-### Технические детали
+## Кнопки и панели (sheet/dialog)
 
-- **Frontend**: React + Vite + Tailwind + shadcn/ui, react-router, TanStack Query
-- **State**: Zustand для состояния редактора (текущая сцена, время, edits)
-- **Backend**: Lovable Cloud (Supabase) — Postgres, Storage, Edge Functions (Deno)
-- **AI**: Lovable AI Gateway (`google/gemini-3-flash-preview` + tool calling для структурированного вывода)
-- **STT**: ElevenLabs Scribe `scribe_v2` через edge function (потребуется ELEVENLABS_API_KEY)
-- **Storage**: bucket `videos` (приватный, signed URLs), bucket `thumbnails` (публичный)
-- **Edge functions**: `transcribe-video`, `analyze-scenes`, `regenerate-scene`
-- **Превью-движок**: `<video>` + абсолютно позиционированный overlay с requestAnimationFrame-синхронизацией субтитров и transform-зумов
-- **Экспорт**: Canvas + MediaRecorder API (webm), либо «Coming soon» если качество неприемлемо
-- **Язык**: весь UI на русском, AI-промпты на русском
+**Edit (левая колонка, верх)**
+- **Captions** — открывает `StylePanel` (уже есть, перенести триггер сюда; и пресеты, и кастом).
+- **Scenes** — открывает Sheet со списком сцен (то, что сейчас в левой колонке) + редактирование текста/highlight.
+- **Trim Video** — Sheet с двумя ползунками start/end → сохранить в `projects.trim_start/trim_end` (новые колонки).
 
-### Следующие шаги после MVP
-1. Подключить внешний рендер-сервис (Shotstack/Creatomate) для качественного экспорта длинных видео
-2. Magic Clips — авто-нарезка часового подкаста на шортсы
-3. AI B-roll через генерацию изображений
-4. Удаление пауз через анализ аудио-волны
-5. Тарифы и Stripe
+**AI Boost (правая колонка)** — toggle-список, как на скриншоте Submagic:
+- AI Captions (вкл/выкл показ субтитров).
+- AI Auto Zooms — кнопка «Применить» вызывает существующую `analyze-scenes` функцию и проставляет `zoom` на сценах.
+- AI Auto B-rolls — открывает sub-панель «Источник B-roll»:
+  - Pexels (бесплатно, по ключевым словам сцены)
+  - Pixabay
+  - Загрузить свои клипы (storage `b-rolls` bucket)
+  - сохраняем выбор в `scenes.broll_url`.
+- Clean Audio — toggle, на экспорте применяется фильтр (high-pass + noise gate в edge-функции через ffmpeg).
+- Add Music — Sheet:
+  - библиотека из 8–10 бесплатных треков (lo-fi, corporate, energetic) + загрузка своего mp3
+  - слайдер громкости 0–100% (по умолчанию 20%)
+  - сохраняем `projects.music_url`, `projects.music_volume`.
+
+**AI Tools (левая колонка, низ)**
+- Hook Title (уже есть в `analyze-scenes`).
+- Remove Silences (todo-флаг).
+- Eye Contact (todo-флаг).
+Каждый — Switch + tooltip «применится при экспорте».
+
+## Экспорт в 4K
+
+Кнопка **Export** в хедере → диалог:
+- Качество: 720p / 1080p / **4K (3840×2160 для 16:9, 2160×3840 для 9:16)**
+- Формат: MP4 (H.264).
+- Включить субтитры / музыку / b-rolls (галочки).
+- Кнопка «Начать экспорт» → вызывает edge-функцию `export-video`.
+
+Edge-функция `export-video` (новая):
+- Берёт исходное видео + words + scenes + style + музыку.
+- Запускает рендер через ffmpeg (Deno + ffmpeg.wasm недостаточно для 4K → используем внешний сервис **Shotstack** или **Creatomate** API). Поскольку нет API-ключа, на первом этапе делаем server-side ffmpeg через временный воркер: мы вернём сигнал «в процессе», сохраняем job в таблицу `export_jobs`, юзер видит прогресс и получает ссылку на скачивание.
+- Для MVP: рендерим 1080p в edge функции через ffmpeg-static (если получится), а для 4K — показываем «Premium / coming soon» с подсказкой.
+
+> Уточнение: реальный 4K-рендер с субтитрами/музыкой/b-roll'ами требует серверного ffmpeg или платного API. В рамках этой задачи добавим UI экспорта + edge-функцию `export-video`, которая собирает SRT + конкатенирует через ffmpeg в 1080p и помечает 4K как «готовится». Если нужен честный 4K — потребуется подключить Shotstack/Creatomate (попрошу ключ отдельно).
+
+## БД-изменения (миграция)
+
+- `projects`: добавить `trim_start float`, `trim_end float`, `music_url text`, `music_volume int default 20`, `clean_audio bool default false`, `captions_enabled bool default true`, `export_quality text default '1080p'`.
+- `scenes`: добавить `broll_url text` (опц.).
+- Новая таблица `export_jobs` (id, project_id, user_id, status, quality, output_url, progress, created_at) + RLS «owner only».
+- Storage buckets: `music` (public read), `b-rolls` (private, owner read).
+
+## Файлы
+
+- `src/pages/Editor.tsx` — переписать layout на 3 колонки.
+- `src/components/editor/VideoPreview.tsx` — ограничить высоту, убрать огромный размер.
+- `src/components/editor/panels/ScenesPanel.tsx` — вынести список сцен из Editor.
+- `src/components/editor/panels/TrimPanel.tsx` — новый.
+- `src/components/editor/panels/MusicPanel.tsx` — новый, со слайдером громкости и библиотекой.
+- `src/components/editor/panels/BrollPanel.tsx` — новый, выбор источника.
+- `src/components/editor/panels/ExportDialog.tsx` — новый.
+- `src/components/editor/AIBoostPanel.tsx` — правая колонка с тогглами.
+- `src/components/editor/EditToolsPanel.tsx` — левая колонка с кнопками.
+- `supabase/functions/export-video/index.ts` — новая edge-функция.
+- Миграция БД с полями выше.
+
+## Уточнение по B-rolls
+Для авто-вставки сторонних видео понадобится источник. Предлагаю **Pexels API** — бесплатно, без оплаты пользователем; ключ запросим через secret `PEXELS_API_KEY`. Если согласишься — добавлю в плане edge-функцию `fetch-broll`, которая по ключевым словам сцены берёт релевантный клип.

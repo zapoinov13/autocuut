@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      export_jobs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          output_url: string | null
+          progress: number
+          project_id: string
+          quality: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          output_url?: string | null
+          progress?: number
+          project_id: string
+          quality?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          output_url?: string | null
+          progress?: number
+          project_id?: string
+          quality?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -40,15 +79,22 @@ export type Database = {
       }
       projects: {
         Row: {
+          captions_enabled: boolean
+          clean_audio: boolean
           created_at: string
           duration: number | null
           error_message: string | null
+          export_quality: string
           id: string
+          music_url: string | null
+          music_volume: number
           status: Database["public"]["Enums"]["project_status"]
           style: string
           thumbnail_url: string | null
           title: string
           title_suggestion: string | null
+          trim_end: number | null
+          trim_start: number | null
           updated_at: string
           user_id: string
           video_path: string | null
@@ -56,15 +102,22 @@ export type Database = {
           viral_score: number | null
         }
         Insert: {
+          captions_enabled?: boolean
+          clean_audio?: boolean
           created_at?: string
           duration?: number | null
           error_message?: string | null
+          export_quality?: string
           id?: string
+          music_url?: string | null
+          music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null
+          trim_end?: number | null
+          trim_start?: number | null
           updated_at?: string
           user_id: string
           video_path?: string | null
@@ -72,15 +125,22 @@ export type Database = {
           viral_score?: number | null
         }
         Update: {
+          captions_enabled?: boolean
+          clean_audio?: boolean
           created_at?: string
           duration?: number | null
           error_message?: string | null
+          export_quality?: string
           id?: string
+          music_url?: string | null
+          music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null
+          trim_end?: number | null
+          trim_start?: number | null
           updated_at?: string
           user_id?: string
           video_path?: string | null
@@ -91,6 +151,7 @@ export type Database = {
       }
       scenes: {
         Row: {
+          broll_url: string | null
           created_at: string
           end_time: number
           highlight_words: Json
@@ -104,6 +165,7 @@ export type Database = {
           zoom: string
         }
         Insert: {
+          broll_url?: string | null
           created_at?: string
           end_time: number
           highlight_words?: Json
@@ -117,6 +179,7 @@ export type Database = {
           zoom?: string
         }
         Update: {
+          broll_url?: string | null
           created_at?: string
           end_time?: number
           highlight_words?: Json
