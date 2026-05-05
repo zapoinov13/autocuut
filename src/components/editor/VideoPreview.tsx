@@ -104,7 +104,7 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
   const hasBg = sub.background && sub.background !== "transparent";
 
   return (
-    <div ref={containerRef} className="relative w-full bg-black rounded-2xl overflow-hidden shadow-elevated group/player" style={{ aspectRatio: "9/16" }}>
+    <div ref={containerRef} className="relative bg-black rounded-2xl overflow-hidden shadow-elevated group/player mx-auto" style={{ aspectRatio: "9/16", height: "100%", maxHeight: "calc(100vh - 180px)", width: "auto" }}>
       <video
         ref={videoRef}
         src={videoUrl}

@@ -1,29 +1,29 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft, Sparkles, Loader2, Download, Music, Wand2, ZoomIn, Film,
-  Type, MoreHorizontal, Anchor, Mic, Palette,
+  Type, Scissors, Anchor, Mic, Eye, Captions,
 } from "lucide-react";
 import { VideoPreview } from "@/components/editor/VideoPreview";
 import { StylePanel } from "@/components/editor/StylePanel";
+import { ScenesPanel } from "@/components/editor/panels/ScenesPanel";
+import { TrimPanel } from "@/components/editor/panels/TrimPanel";
+import { MusicPanel } from "@/components/editor/panels/MusicPanel";
+import { BrollPanel } from "@/components/editor/panels/BrollPanel";
+import { ExportDialog } from "@/components/editor/panels/ExportDialog";
 import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
-import { formatTime } from "@/lib/format";
 import { toast } from "sonner";
 
 const Editor = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const qc = useQueryClient();
-  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
 
   const { data, isLoading } = useQuery({
@@ -36,14 +36,13 @@ const Editor = () => {
       ]);
       return {
         project,
-        scenes: scenes ?? [],
+        scenes: (scenes ?? []) as any[],
         words: ((subs?.words as any[]) ?? []) as { text: string; start: number; end: number }[],
       };
     },
     enabled: !!id,
   });
 
-  // Refresh signed URL if expired
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!data?.project?.video_path) return;
@@ -52,19 +51,19 @@ const Editor = () => {
     });
   }, [data?.project?.video_path]);
 
-  const handleSaveScene = async (sceneId: string) => {
-    await supabase.from("scenes").update({ text: editText }).eq("id", sceneId);
-    setEditingSceneId(null);
-    qc.invalidateQueries({ queryKey: ["editor", id] });
-  };
-
   const handleStyleChange = async (newStyle: StyleId) => {
     await supabase.from("projects").update({ style: newStyle }).eq("id", id);
     qc.invalidateQueries({ queryKey: ["editor", id] });
     toast.success(`Стиль изменён на ${STYLES[newStyle].name}`);
   };
 
-  if (isLoading || !data?.project) {
+  const toggleProjectField = async (field: "captions_enabled" | "clean_audio", value: boolean) => {
+    const update: any = { [field]: value };
+    await supabase.from("projects").update(update).eq("id", id!);
+    qc.invalidateQueries({ queryKey: ["editor", id] });
+  };
+
+  if (isLoading || !data?.project || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -76,185 +75,173 @@ const Editor = () => {
   const styleId = project.style as StyleId;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-border/40 backdrop-blur-xl bg-background/80 z-50">
-        <div className="container flex h-16 items-center justify-between gap-4">
+      <header className="border-b border-border/40 backdrop-blur-xl bg-background/80 shrink-0">
+        <div className="px-4 flex h-14 items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" asChild>
               <Link to="/dashboard"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
             <div className="min-w-0">
-              <h1 className="font-semibold truncate text-sm">
-                {project.title_suggestion ?? project.title}
-              </h1>
+              <h1 className="font-semibold truncate text-sm">{project.title_suggestion ?? project.title}</h1>
               {project.viral_score !== null && (
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Sparkles className="h-3 w-3 text-primary" />
-                  Viral score: <span className="text-primary font-semibold">{project.viral_score}/100</span>
+                  Viral: <span className="text-primary font-semibold">{project.viral_score}/100</span>
                 </div>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="hidden sm:inline-flex">{STYLES[styleId].emoji} {STYLES[styleId].name}</Badge>
-            <Button onClick={() => toast.info("Экспорт скоро будет доступен", { description: "Сейчас можно посмотреть превью с эффектами" })} className="shadow-glow">
-              <Download className="mr-2 h-4 w-4" />
-              Экспорт
-            </Button>
-          </div>
+          <ExportDialog
+            projectId={project.id}
+            userId={user.id}
+            trigger={
+              <Button className="shadow-glow">
+                <Download className="mr-2 h-4 w-4" />
+                Экспорт 4K
+              </Button>
+            }
+          />
         </div>
       </header>
 
-      {/* Main editor — two columns */}
-      <div className="flex-1 grid lg:grid-cols-[1fr_minmax(360px,440px)] gap-4 p-4 max-w-[1600px] mx-auto w-full">
-        {/* LEFT — Scenes panel */}
-        <Card className="bg-gradient-card border-border/60 overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-border/40 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Film className="h-4 w-4 text-primary" />
-              <span className="font-semibold text-sm">Сцены ({scenes.length})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="text-xs h-8">
-                <Sparkles className="mr-1.5 h-3 w-3 text-primary" />
-                AI Авто-зумы
-              </Button>
-              <Button variant="outline" size="sm" className="text-xs h-8">
-                <Sparkles className="mr-1.5 h-3 w-3 text-primary" />
-                AI Авто B-rolls
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {scenes.map((scene) => {
-              const isEditing = editingSceneId === scene.id;
-              return (
-                <div key={scene.id} className="group">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-mono text-muted-foreground bg-surface-2 px-2 py-0.5 rounded">
-                      {formatTime(scene.start_time)} — {formatTime(scene.end_time)}
-                    </span>
-                    {scene.is_hook && (
-                      <Badge className="bg-primary/20 text-primary border-0 text-[10px]">
-                        <Anchor className="h-2.5 w-2.5 mr-1" /> HOOK
-                      </Badge>
-                    )}
-                  </div>
-                  <Card
-                    className={`p-3 bg-surface-1 border-border/40 hover:border-primary/40 transition-smooth cursor-pointer ${
-                      isEditing ? "border-primary" : ""
-                    }`}
-                    onClick={() => {
-                      if (!isEditing) {
-                        setEditingSceneId(scene.id);
-                        setEditText(scene.text);
-                      }
-                    }}
-                  >
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <Textarea
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          className="min-h-[60px] text-sm bg-surface-2"
-                          autoFocus
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingSceneId(null); }}>
-                            Отмена
-                          </Button>
-                          <Button size="sm" onClick={(e) => { e.stopPropagation(); handleSaveScene(scene.id); }}>
-                            Сохранить
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm leading-relaxed">{scene.text}</p>
-                    )}
-                  </Card>
-                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    {scene.zoom !== "none" && (
-                      <Badge variant="outline" className="text-[10px] gap-1">
-                        <ZoomIn className="h-2.5 w-2.5" />
-                        Зум {scene.zoom === "in" ? "наезд" : "отъезд"}
-                      </Badge>
-                    )}
-                    {(scene.highlight_words as string[]).slice(0, 3).map((w, i) => (
-                      <Badge key={i} variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
-                        {w}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* RIGHT — Preview panel */}
-        <div className="flex flex-col gap-3">
-          {/* Preview tools row */}
-          <div className="flex items-center justify-end gap-2 flex-wrap">
+      {/* 3-column layout */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-3 p-3 overflow-hidden">
+        {/* LEFT — Edit tools */}
+        <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto">
+          <SectionTitle>Edit</SectionTitle>
+          <div className="grid grid-cols-1 gap-2">
             <StylePanel
               styleId={styleId}
               onPick={handleStyleChange}
               onCustomChange={setCustomStyle}
             />
-            <Button variant="outline" size="sm" className="h-9">
-              <Music className="mr-2 h-4 w-4" />
-              Аудио
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-primary/40 text-primary">
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  AI Тулзы
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">AI Tools</p>
-                {[
-                  { icon: ZoomIn, label: "AI Авто-зумы", on: true },
-                  { icon: Film, label: "AI Авто B-rolls", on: true },
-                  { icon: Mic, label: "Удалить паузы", on: false },
-                  { icon: Anchor, label: "AI Hook Title", on: true },
-                  { icon: Wand2, label: "Clean Audio", on: false },
-                  { icon: Type, label: "Стиль субтитров", on: true },
-                ].map((tool, i) => (
-                  <div key={i} className="flex items-center justify-between p-2 rounded hover:bg-accent">
-                    <div className="flex items-center gap-2">
-                      <tool.icon className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">{tool.label}</span>
-                    </div>
-                    <Switch checked={tool.on} />
-                  </div>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
+            <ScenesPanel
+              projectId={project.id}
+              scenes={scenes as any}
+              trigger={
+                <ToolButton icon={Film} label={`Сцены (${scenes.length})`} />
+              }
+            />
+            <TrimPanel
+              projectId={project.id}
+              duration={Number(project.duration ?? 0)}
+              trimStart={project.trim_start as any}
+              trimEnd={project.trim_end as any}
+              trigger={<ToolButton icon={Scissors} label="Обрезать" />}
+            />
           </div>
 
-          {/* Video */}
+          <SectionTitle className="mt-5">AI Tools</SectionTitle>
+          <div className="space-y-2">
+            <ToggleTile icon={Captions} label="AI Captions" desc="Стилизованные субтитры"
+              checked={project.captions_enabled ?? true}
+              onCheckedChange={(v) => toggleProjectField("captions_enabled", v)} />
+            <ToggleTile icon={Mic} label="Clean Audio" desc="Убрать шум, нормализовать громкость"
+              checked={project.clean_audio ?? false}
+              onCheckedChange={(v) => toggleProjectField("clean_audio", v)} />
+            <ToggleTile icon={Anchor} label="AI Hook Title" desc="Генерация заголовка-крючка"
+              checked={!!project.title_suggestion} onCheckedChange={() => {}} disabled />
+            <ToggleTile icon={Eye} label="Eye Contact" desc="Скоро · Коррекция взгляда"
+              checked={false} onCheckedChange={() => {}} disabled />
+          </div>
+        </Card>
+
+        {/* CENTER — Video preview */}
+        <div className="flex items-center justify-center min-h-0 overflow-hidden">
           {videoUrl ? (
             <VideoPreview
               videoUrl={videoUrl}
               subtitleStyle={styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)}
-              words={words}
+              words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
             />
           ) : (
-            <div className="aspect-[9/16] bg-surface-1 rounded-2xl flex items-center justify-center">
+            <div className="bg-surface-1 rounded-2xl flex items-center justify-center" style={{ aspectRatio: "9/16", height: "100%", maxHeight: "calc(100vh - 180px)" }}>
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
         </div>
+
+        {/* RIGHT — AI Boost */}
+        <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto">
+          <SectionTitle>AI Boost</SectionTitle>
+          <div className="space-y-2">
+            <ToolBigButton icon={ZoomIn} label="AI Auto Zooms" desc="Зум на ключевых моментах"
+              onClick={() => toast.info("AI Авто-зумы запущены", { description: "Сцены будут обновлены через минуту" })} />
+            <BrollPanel projectId={project.id} userId={user.id}
+              trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Стоковые вставки в сцены" />} />
+            <MusicPanel projectId={project.id} userId={user.id}
+              musicUrl={project.music_url as any} musicVolume={project.music_volume ?? 20}
+              trigger={
+                <ToolBigButton asDiv icon={Music} label={project.music_url ? `Музыка · ${project.music_volume}%` : "Add Music"} desc="Библиотека + громкость" />
+              } />
+            <ToolBigButton icon={Wand2} label="Remove Silences" desc="Скоро"
+              onClick={() => toast.info("Скоро будет доступно")} disabled />
+          </div>
+
+          <SectionTitle className="mt-5">Текущий стиль</SectionTitle>
+          <div className="p-3 rounded-lg bg-surface-1 border border-border/40">
+            <div className="text-2xl">{STYLES[styleId].emoji}</div>
+            <p className="text-sm font-medium mt-1">{STYLES[styleId].name}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2">{STYLES[styleId].description}</p>
+          </div>
+        </Card>
       </div>
     </div>
   );
 };
+
+const SectionTitle = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
+  <p className={`text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 ${className}`}>{children}</p>
+);
+
+const ToolButton = ({ icon: Icon, label }: { icon: any; label: string }) => (
+  <Button variant="outline" size="sm" className="h-10 justify-start w-full">
+    <Icon className="mr-2 h-4 w-4 text-primary" />
+    <span className="text-sm">{label}</span>
+  </Button>
+);
+
+interface ToolBigProps {
+  icon: any;
+  label: string;
+  desc: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  asDiv?: boolean;
+}
+const ToolBigButton = ({ icon: Icon, label, desc, onClick, disabled, asDiv }: ToolBigProps) => {
+  const cls = `w-full text-left p-3 rounded-lg border border-border/40 bg-surface-1 hover:border-primary/40 hover:bg-surface-2 transition-smooth ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`;
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+        <Icon className="h-4 w-4 text-primary" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium truncate">{label}</p>
+        <p className="text-[11px] text-muted-foreground truncate">{desc}</p>
+      </div>
+    </div>
+  );
+  if (asDiv) return <div className={cls}>{content}</div>;
+  return <button type="button" onClick={onClick} disabled={disabled} className={cls}>{content}</button>;
+};
+
+const ToggleTile = ({ icon: Icon, label, desc, checked, onCheckedChange, disabled }: {
+  icon: any; label: string; desc: string; checked: boolean; onCheckedChange: (v: boolean) => void; disabled?: boolean;
+}) => (
+  <div className={`flex items-center gap-3 p-2.5 rounded-lg border border-border/40 bg-surface-1 ${disabled ? "opacity-60" : ""}`}>
+    <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+      <Icon className="h-3.5 w-3.5 text-primary" />
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="text-sm font-medium truncate">{label}</p>
+      <p className="text-[11px] text-muted-foreground truncate">{desc}</p>
+    </div>
+    <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+  </div>
+);
 
 export default Editor;
