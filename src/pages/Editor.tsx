@@ -58,7 +58,8 @@ const Editor = () => {
   };
 
   const toggleProjectField = async (field: "captions_enabled" | "clean_audio", value: boolean) => {
-    await (supabase.from("projects").update({ [field]: value }) as any).eq("id", id!);
+    const update: any = { [field]: value };
+    await supabase.from("projects").update(update).eq("id", id!);
     qc.invalidateQueries({ queryKey: ["editor", id] });
   };
 
