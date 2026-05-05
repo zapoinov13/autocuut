@@ -4,19 +4,25 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { SubtitleStyle } from "@/lib/styles";
 import { formatDuration } from "@/lib/format";
+import type { VideoFormat } from "@/components/editor/panels/FormatPanel";
 
 interface Word { text: string; start: number; end: number; }
-interface Scene { id: string; start_time: number; end_time: number; zoom: string; highlight_words: string[]; }
+interface Scene { id: string; start_time: number; end_time: number; zoom: string; highlight_words: string[]; broll_url?: string | null; top_video_url?: string | null; }
 
 interface Props {
   videoUrl: string;
   subtitleStyle: SubtitleStyle;
   words: Word[];
   scenes: Scene[];
+  format?: VideoFormat;
+  musicUrl?: string | null;
+  musicVolume?: number;
 }
 
-export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Props) => {
+export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, format = "stories", musicUrl, musicVolume = 20 }: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const topVideoRef = useRef<HTMLVideoElement>(null);
+  const musicRef = useRef<HTMLAudioElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -51,6 +57,19 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
+  // Sync top video and music with main video
+  useEffect(() => {
+    const top = topVideoRef.current;
+    const music = musicRef.current;
+    if (top) { playing ? top.play().catch(() => {}) : top.pause(); }
+    if (music) { playing ? music.play().catch(() => {}) : music.pause(); }
+  }, [playing, activeScene?.top_video_url, musicUrl]);
+
+  useEffect(() => {
+    const music = musicRef.current;
+    if (music) music.volume = Math.min(1, Math.max(0, musicVolume / 100));
+  }, [musicVolume]);
+
   const zoomScale = useMemo(() => {
     if (!activeScene) return 1;
     const progress = (currentTime - activeScene.start_time) / Math.max(0.01, activeScene.end_time - activeScene.start_time);
@@ -70,6 +89,7 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
     if (!v) return;
     v.currentTime = Math.max(0, Math.min(duration, t));
     setCurrentTime(v.currentTime);
+    if (musicRef.current) musicRef.current.currentTime = v.currentTime;
   }, [duration]);
 
   const toggleMute = () => {
@@ -96,33 +116,74 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
 
   const positionClass =
     sub.position === "center" ? "top-1/2 -translate-y-1/2"
-    : sub.position === "top" ? "top-[10%]"
-    : "bottom-[15%]";
+    : sub.position === "top" ? "top-[8%]"
+    : "bottom-[10%]";
 
   const textShadow = sub.shadowBlur > 0 ? `0 4px ${sub.shadowBlur}px ${sub.shadowColor}` : undefined;
   const stroke = sub.strokeWidth > 0 ? `${sub.strokeWidth}px ${sub.strokeColor}` : undefined;
   const hasBg = sub.background && sub.background !== "transparent";
 
-  return (
-    <div ref={containerRef} className="relative bg-black rounded-2xl overflow-hidden shadow-elevated group/player mx-auto" style={{ aspectRatio: "9/16", height: "100%", maxHeight: "calc(100vh - 180px)", width: "auto" }}>
-      <video
-        ref={videoRef}
-        src={videoUrl}
-        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 ease-out cursor-pointer"
-        style={{ transform: `scale(${zoomScale})` }}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-        onClick={togglePlay}
-        playsInline
-      />
+  const aspectRatio = format === "landscape" ? "16/9" : "9/16";
+  const isSplit = format === "split";
 
-      {/* Big play button overlay when paused */}
+  return (
+    <div ref={containerRef} className="relative bg-black rounded-2xl overflow-hidden shadow-elevated group/player mx-auto" style={{ aspectRatio, height: "100%", maxHeight: "calc(100vh - 180px)", width: "auto" }}>
+      {isSplit ? (
+        <>
+          {/* Top half — B-roll / uploaded clip */}
+          <div className="absolute inset-x-0 top-0 h-1/2 bg-black overflow-hidden">
+            {activeScene?.top_video_url ? (
+              <video
+                ref={topVideoRef}
+                src={activeScene.top_video_url}
+                className="w-full h-full object-cover"
+                loop
+                muted
+                playsInline
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-white/40 text-center px-3">
+                Назначь верхний клип на сцену<br/>(B-roll или загрузи свой)
+              </div>
+            )}
+          </div>
+          {/* Bottom half — speaker video */}
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-black overflow-hidden">
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              className="w-full h-full object-cover transition-transform duration-300 ease-out cursor-pointer"
+              style={{ transform: `scale(${zoomScale})` }}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+              onClick={togglePlay}
+              playsInline
+            />
+          </div>
+        </>
+      ) : (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 ease-out cursor-pointer"
+          style={{ transform: `scale(${zoomScale})` }}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onClick={togglePlay}
+          playsInline
+        />
+      )}
+
+      {musicUrl && <audio ref={musicRef} src={musicUrl} loop />}
+
       {!playing && (
         <button
           onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"
+          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors z-10"
           aria-label="Play"
         >
           <div className="w-20 h-20 rounded-full bg-white/90 flex items-center justify-center shadow-2xl">
@@ -131,10 +192,9 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
         </button>
       )}
 
-      {/* Subtitles overlay */}
       {visibleWords.length > 0 && (
         <div
-          className={`absolute left-4 right-4 ${positionClass} pointer-events-none flex flex-wrap items-center justify-center gap-x-2 gap-y-1`}
+          className={`absolute left-4 right-4 ${positionClass} pointer-events-none flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20`}
           style={{
             fontSize: `${sub.fontSize}px`,
             fontWeight: sub.fontWeight,
@@ -173,8 +233,7 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes }: Pr
       )}
 
       {/* Custom controls */}
-      <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover/player:opacity-100 transition-opacity">
-        {/* Progress */}
+      <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover/player:opacity-100 transition-opacity z-30">
         <div className="px-1 mb-2">
           <Slider
             value={[currentTime]}

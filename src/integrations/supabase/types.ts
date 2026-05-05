@@ -85,11 +85,13 @@ export type Database = {
           duration: number | null
           error_message: string | null
           export_quality: string
+          format: string
           id: string
           music_url: string | null
           music_volume: number
           status: Database["public"]["Enums"]["project_status"]
           style: string
+          subtitle_position: string
           thumbnail_url: string | null
           title: string
           title_suggestion: string | null
@@ -108,11 +110,13 @@ export type Database = {
           duration?: number | null
           error_message?: string | null
           export_quality?: string
+          format?: string
           id?: string
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
+          subtitle_position?: string
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null
@@ -131,11 +135,13 @@ export type Database = {
           duration?: number | null
           error_message?: string | null
           export_quality?: string
+          format?: string
           id?: string
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
+          subtitle_position?: string
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null
@@ -161,6 +167,7 @@ export type Database = {
           project_id: string
           start_time: number
           text: string
+          top_video_url: string | null
           user_id: string
           zoom: string
         }
@@ -175,6 +182,7 @@ export type Database = {
           project_id: string
           start_time: number
           text?: string
+          top_video_url?: string | null
           user_id: string
           zoom?: string
         }
@@ -189,6 +197,7 @@ export type Database = {
           project_id?: string
           start_time?: number
           text?: string
+          top_video_url?: string | null
           user_id?: string
           zoom?: string
         }

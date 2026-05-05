@@ -3,11 +3,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Anchor, ZoomIn } from "lucide-react";
-import { ReactNode, useState } from "react";
+import { Anchor, ZoomIn, Upload, Trash2, Layers, Loader2 } from "lucide-react";
+import { ReactNode, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatTime } from "@/lib/format";
+import { toast } from "sonner";
 
 interface Scene {
   id: string;
@@ -17,12 +18,26 @@ interface Scene {
   zoom: string;
   is_hook: boolean;
   highlight_words: string[];
+  top_video_url?: string | null;
+  broll_url?: string | null;
 }
 
-export const ScenesPanel = ({ trigger, scenes, projectId }: { trigger: ReactNode; scenes: Scene[]; projectId: string }) => {
+interface Props {
+  trigger: ReactNode;
+  scenes: Scene[];
+  projectId: string;
+  userId: string;
+  format?: string;
+}
+
+export const ScenesPanel = ({ trigger, scenes, projectId, userId, format }: Props) => {
   const qc = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const isSplit = format === "split";
 
   const save = async (id: string) => {
     await supabase.from("scenes").update({ text: editText }).eq("id", id);
@@ -30,10 +45,28 @@ export const ScenesPanel = ({ trigger, scenes, projectId }: { trigger: ReactNode
     qc.invalidateQueries({ queryKey: ["editor", projectId] });
   };
 
+  const uploadTop = async (sceneId: string, file: File) => {
+    setUploadingId(sceneId);
+    const path = `${userId}/${projectId}/scene-${sceneId}-${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("brolls").upload(path, file);
+    if (error) { toast.error(error.message); setUploadingId(null); return; }
+    // brolls bucket private — generate signed url for ~7d (we'll just save the path; or use signed url)
+    const { data: signed } = await supabase.storage.from("brolls").createSignedUrl(path, 60 * 60 * 24 * 30);
+    await supabase.from("scenes").update({ top_video_url: signed?.signedUrl ?? null }).eq("id", sceneId);
+    setUploadingId(null);
+    qc.invalidateQueries({ queryKey: ["editor", projectId] });
+    toast.success("Верхнее видео назначено");
+  };
+
+  const clearTop = async (sceneId: string) => {
+    await supabase.from("scenes").update({ top_video_url: null }).eq("id", sceneId);
+    qc.invalidateQueries({ queryKey: ["editor", projectId] });
+  };
+
   return (
     <Sheet>
       <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="w-[420px] sm:w-[480px] overflow-y-auto">
+      <SheetContent className="w-[440px] sm:w-[500px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Сцены ({scenes.length})</SheetTitle>
         </SheetHeader>
@@ -83,6 +116,33 @@ export const ScenesPanel = ({ trigger, scenes, projectId }: { trigger: ReactNode
                     <Badge key={i} variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">{w}</Badge>
                   ))}
                 </div>
+
+                {isSplit && (
+                  <div className="mt-2 p-2 rounded-md bg-surface-2/50 border border-border/30 flex items-center gap-2"
+                    onClick={(e) => e.stopPropagation()}>
+                    <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="text-[11px] text-muted-foreground flex-1 truncate">
+                      {scene.top_video_url ? "✓ Верхний клип назначен" : "Верх пуст"}
+                    </span>
+                    <input
+                      ref={(el) => { fileInputs.current[scene.id] = el; }}
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={(e) => e.target.files?.[0] && uploadTop(scene.id, e.target.files[0])}
+                    />
+                    <Button size="sm" variant="ghost" className="h-7 px-2"
+                      onClick={() => fileInputs.current[scene.id]?.click()}
+                      disabled={uploadingId === scene.id}>
+                      {uploadingId === scene.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                    </Button>
+                    {scene.top_video_url && (
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => clearTop(scene.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

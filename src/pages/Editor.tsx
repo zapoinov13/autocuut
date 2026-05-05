@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Sparkles, Loader2, Download, Music, Wand2, ZoomIn, Film,
-  Type, Scissors, Anchor, Mic, Eye, Captions,
+  Scissors, Anchor, Mic, Eye, Captions, LayoutTemplate,
 } from "lucide-react";
 import { VideoPreview } from "@/components/editor/VideoPreview";
 import { StylePanel } from "@/components/editor/StylePanel";
@@ -17,6 +17,7 @@ import { TrimPanel } from "@/components/editor/panels/TrimPanel";
 import { MusicPanel } from "@/components/editor/panels/MusicPanel";
 import { BrollPanel } from "@/components/editor/panels/BrollPanel";
 import { ExportDialog } from "@/components/editor/panels/ExportDialog";
+import { FormatPanel, FORMATS, VideoFormat } from "@/components/editor/panels/FormatPanel";
 import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
 import { toast } from "sonner";
 
@@ -73,6 +74,12 @@ const Editor = () => {
 
   const { project, scenes, words } = data;
   const styleId = project.style as StyleId;
+  const format = (project.format as VideoFormat) ?? "stories";
+  const formatMeta = FORMATS.find((f) => f.id === format)!;
+  const effectiveStyle: SubtitleStyle = {
+    ...(styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)),
+    position: (project.subtitle_position as any) ?? (styleId === "custom" ? customStyle.position : getEffectiveSubtitleStyle(styleId).position),
+  };
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
@@ -93,16 +100,25 @@ const Editor = () => {
               )}
             </div>
           </div>
-          <ExportDialog
-            projectId={project.id}
-            userId={user.id}
-            trigger={
-              <Button className="shadow-glow">
-                <Download className="mr-2 h-4 w-4" />
-                Экспорт 4K
-              </Button>
-            }
-          />
+          {videoUrl && (
+            <ExportDialog
+              projectTitle={project.title_suggestion ?? project.title}
+              videoUrl={videoUrl}
+              words={(project.captions_enabled ?? true) ? words : []}
+              scenes={scenes as any}
+              subtitleStyle={effectiveStyle}
+              format={format}
+              musicUrl={project.music_url as any}
+              musicVolume={project.music_volume ?? 20}
+              captionsEnabled={project.captions_enabled ?? true}
+              trigger={
+                <Button className="shadow-glow">
+                  <Download className="mr-2 h-4 w-4" />
+                  Экспорт
+                </Button>
+              }
+            />
+          )}
         </div>
       </header>
 
@@ -112,6 +128,12 @@ const Editor = () => {
         <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto">
           <SectionTitle>Edit</SectionTitle>
           <div className="grid grid-cols-1 gap-2">
+            <FormatPanel
+              projectId={project.id}
+              format={format}
+              subtitlePosition={(project.subtitle_position as string) ?? "bottom"}
+              trigger={<ToolButton icon={LayoutTemplate} label={`Формат: ${formatMeta.name}`} />}
+            />
             <StylePanel
               styleId={styleId}
               onPick={handleStyleChange}
@@ -119,6 +141,8 @@ const Editor = () => {
             />
             <ScenesPanel
               projectId={project.id}
+              userId={user.id}
+              format={format}
               scenes={scenes as any}
               trigger={
                 <ToolButton icon={Film} label={`Сцены (${scenes.length})`} />
@@ -153,12 +177,15 @@ const Editor = () => {
           {videoUrl ? (
             <VideoPreview
               videoUrl={videoUrl}
-              subtitleStyle={styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)}
+              subtitleStyle={effectiveStyle}
               words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
+              format={format}
+              musicUrl={project.music_url as any}
+              musicVolume={project.music_volume ?? 20}
             />
           ) : (
-            <div className="bg-surface-1 rounded-2xl flex items-center justify-center" style={{ aspectRatio: "9/16", height: "100%", maxHeight: "calc(100vh - 180px)" }}>
+            <div className="bg-surface-1 rounded-2xl flex items-center justify-center" style={{ aspectRatio: format === "landscape" ? "16/9" : "9/16", height: "100%", maxHeight: "calc(100vh - 180px)" }}>
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
@@ -170,8 +197,8 @@ const Editor = () => {
           <div className="space-y-2">
             <ToolBigButton icon={ZoomIn} label="AI Auto Zooms" desc="Зум на ключевых моментах"
               onClick={() => toast.info("AI Авто-зумы запущены", { description: "Сцены будут обновлены через минуту" })} />
-            <BrollPanel projectId={project.id} userId={user.id}
-              trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Стоковые вставки в сцены" />} />
+            <BrollPanel projectId={project.id} userId={user.id} format={format}
+              trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Pexels стоковые вставки" />} />
             <MusicPanel projectId={project.id} userId={user.id}
               musicUrl={project.music_url as any} musicVolume={project.music_volume ?? 20}
               trigger={
@@ -200,7 +227,7 @@ const SectionTitle = ({ children, className = "" }: { children: React.ReactNode;
 const ToolButton = ({ icon: Icon, label }: { icon: any; label: string }) => (
   <Button variant="outline" size="sm" className="h-10 justify-start w-full">
     <Icon className="mr-2 h-4 w-4 text-primary" />
-    <span className="text-sm">{label}</span>
+    <span className="text-sm truncate">{label}</span>
   </Button>
 );
 
