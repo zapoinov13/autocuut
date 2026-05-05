@@ -13,7 +13,8 @@ import {
   Type, MoreHorizontal, Anchor, Mic, Palette,
 } from "lucide-react";
 import { VideoPreview } from "@/components/editor/VideoPreview";
-import { STYLES, STYLE_LIST, StyleId } from "@/lib/styles";
+import { StylePanel } from "@/components/editor/StylePanel";
+import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
 import { formatTime } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -23,6 +24,7 @@ const Editor = () => {
   const qc = useQueryClient();
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
@@ -195,31 +197,11 @@ const Editor = () => {
         <div className="flex flex-col gap-3">
           {/* Preview tools row */}
           <div className="flex items-center justify-end gap-2 flex-wrap">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9">
-                  <Palette className="mr-2 h-4 w-4" />
-                  Стиль
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 p-2">
-                {STYLE_LIST.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => handleStyleChange(s.id)}
-                    className={`w-full text-left p-2 rounded-md hover:bg-accent flex items-center gap-3 ${
-                      styleId === s.id ? "bg-accent" : ""
-                    }`}
-                  >
-                    <span className="text-xl">{s.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{s.name}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-1">{s.description}</p>
-                    </div>
-                  </button>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <StylePanel
+              styleId={styleId}
+              onPick={handleStyleChange}
+              onCustomChange={setCustomStyle}
+            />
             <Button variant="outline" size="sm" className="h-9">
               <Music className="mr-2 h-4 w-4" />
               Аудио
@@ -258,7 +240,12 @@ const Editor = () => {
 
           {/* Video */}
           {videoUrl ? (
-            <VideoPreview videoUrl={videoUrl} styleId={styleId} words={words} scenes={scenes as any} />
+            <VideoPreview
+              videoUrl={videoUrl}
+              subtitleStyle={styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)}
+              words={words}
+              scenes={scenes as any}
+            />
           ) : (
             <div className="aspect-[9/16] bg-surface-1 rounded-2xl flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
