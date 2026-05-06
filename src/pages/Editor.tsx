@@ -148,6 +148,14 @@ const Editor = () => {
               styleId={styleId}
               onPick={handleStyleChange}
               onCustomChange={setCustomStyle}
+              subtitleY={subtitleY}
+              onSubtitleYChange={updateSubtitleY}
+              open={styleSheetOpen}
+              onOpenChange={setStyleSheetOpen}
+              defaultTab={styleTab}
+              trigger={
+                <ToolButton icon={Captions} label="Стиль субтитров" />
+              }
             />
             <ScenesPanel
               projectId={project.id}
