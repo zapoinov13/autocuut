@@ -121,10 +121,30 @@ export const VideoPreview = ({
     else el.requestFullscreen?.();
   };
 
-  const positionClass =
-    sub.position === "center" ? "top-1/2 -translate-y-1/2"
-    : sub.position === "top" ? "top-[8%]"
-    : "bottom-[10%]";
+  // Drag subtitles vertically
+  const [dragging, setDragging] = useState(false);
+  const [localY, setLocalY] = useState(subtitleY);
+  useEffect(() => { if (!dragging) setLocalY(subtitleY); }, [subtitleY, dragging]);
+
+  const onSubPointerDown = (e: React.PointerEvent) => {
+    if (!onSubtitleYChange) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onSubPointerMove = (e: React.PointerEvent) => {
+    if (!dragging || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setLocalY(Math.max(5, Math.min(95, y)));
+  };
+  const onSubPointerUp = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setDragging(false);
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    onSubtitleYChange?.(localY);
+  };
 
   const textShadow = sub.shadowBlur > 0 ? `0 4px ${sub.shadowBlur}px ${sub.shadowColor}` : undefined;
   const stroke = sub.strokeWidth > 0 ? `${sub.strokeWidth}px ${sub.strokeColor}` : undefined;
