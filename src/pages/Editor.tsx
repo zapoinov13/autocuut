@@ -26,6 +26,8 @@ const Editor = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
+  const [styleSheetOpen, setStyleSheetOpen] = useState(false);
+  const [styleTab, setStyleTab] = useState<"presets" | "custom">("presets");
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
