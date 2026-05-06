@@ -185,7 +185,7 @@ export const ExportDialog = (props: Props) => {
 
         // Subtitles
         if (captionsEnabled) {
-          drawSubtitles(ctx, words, t, scene, sub, W, H);
+          drawSubtitles(ctx, words, t, scene, sub, W, H, subtitleY);
         }
 
         setProgress(Math.min(99, (t / totalDuration) * 100));
