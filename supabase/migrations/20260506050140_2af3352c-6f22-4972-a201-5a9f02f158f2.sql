@@ -1,0 +1,1 @@
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS subtitle_y numeric NOT NULL DEFAULT 80;
