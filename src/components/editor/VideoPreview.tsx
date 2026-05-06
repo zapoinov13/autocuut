@@ -221,8 +221,16 @@ export const VideoPreview = ({
 
       {visibleWords.length > 0 && (
         <div
-          className={`absolute left-4 right-4 ${positionClass} pointer-events-none flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20`}
+          onPointerDown={onSubPointerDown}
+          onPointerMove={onSubPointerMove}
+          onPointerUp={onSubPointerUp}
+          onPointerCancel={onSubPointerUp}
+          onDoubleClick={(e) => { e.stopPropagation(); onEditSubtitle?.(); }}
+          className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20 select-none group/sub ${
+            onSubtitleYChange ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
+          }`}
           style={{
+            top: `${localY}%`,
             fontSize: `${sub.fontSize}px`,
             fontWeight: sub.fontWeight,
             color: sub.color,
@@ -234,6 +242,9 @@ export const VideoPreview = ({
             borderRadius: hasBg ? "10px" : undefined,
             lineHeight: 1.15,
             fontFamily: `"${sub.fontFamily}", system-ui, -apple-system, sans-serif`,
+            outline: dragging ? "2px dashed rgba(255,255,255,0.6)" : undefined,
+            outlineOffset: 4,
+            transition: dragging ? "none" : "top 0.15s ease-out",
           }}
         >
           {visibleWords.map((w, i) => {
@@ -256,6 +267,15 @@ export const VideoPreview = ({
               </span>
             );
           })}
+          {onEditSubtitle && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEditSubtitle(); }}
+              className="absolute -top-9 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-md bg-black/80 text-white text-[11px] opacity-0 group-hover/sub:opacity-100 transition-opacity whitespace-nowrap pointer-events-auto"
+            >
+              ✏️ Редактировать стиль
+            </button>
+          )}
         </div>
       )}
 
