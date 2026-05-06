@@ -307,12 +307,12 @@ function drawSubtitles(
   sub: SubtitleStyle,
   W: number,
   H: number,
+  subtitleY: number,
 ) {
   const window = 1.8;
   const visible = words.filter((w) => w.start <= t + 0.1 && w.end > t - window);
   if (!visible.length) return;
 
-  // scale font with canvas height (preview is ~720 high logical)
   const baseRefH = 720;
   const fontSize = Math.round(sub.fontSize * (H / baseRefH));
   const fontFam = `"${sub.fontFamily}", sans-serif`;
@@ -322,11 +322,9 @@ function drawSubtitles(
 
   const highlightSet = new Set((scene?.highlight_words ?? []).map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")));
 
-  // join text
   const text = visible.map((w) => sub.uppercase ? w.text.toUpperCase() : w.text).join(" ");
 
-  // wrap text
-  const maxWidth = W * 0.85;
+  const maxWidth = W * 0.9;
   const lines: string[] = [];
   const wordsArr = text.split(" ");
   let cur = "";
@@ -344,10 +342,7 @@ function drawSubtitles(
   const lineH = fontSize * 1.2;
   const totalH = lines.length * lineH;
 
-  let cy: number;
-  if (sub.position === "top") cy = H * 0.12 + totalH / 2;
-  else if (sub.position === "center") cy = H / 2;
-  else cy = H * 0.85 - totalH / 2;
+  const cy = (subtitleY / 100) * H;
 
   // background
   if (sub.background && sub.background !== "transparent") {
