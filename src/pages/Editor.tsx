@@ -196,6 +196,9 @@ const Editor = () => {
             <VideoPreview
               videoUrl={videoUrl}
               subtitleStyle={effectiveStyle}
+              subtitleY={subtitleY}
+              onSubtitleYChange={updateSubtitleY}
+              onEditSubtitle={() => openSubtitleEditor("custom")}
               words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
               format={format}
