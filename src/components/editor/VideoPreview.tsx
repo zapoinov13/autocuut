@@ -17,9 +17,16 @@ interface Props {
   format?: VideoFormat;
   musicUrl?: string | null;
   musicVolume?: number;
+  subtitleY?: number;
+  onSubtitleYChange?: (y: number) => void;
+  onEditSubtitle?: () => void;
 }
 
-export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, format = "stories", musicUrl, musicVolume = 20 }: Props) => {
+export const VideoPreview = ({
+  videoUrl, subtitleStyle: sub, words, scenes,
+  format = "stories", musicUrl, musicVolume = 20,
+  subtitleY = 80, onSubtitleYChange, onEditSubtitle,
+}: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const topVideoRef = useRef<HTMLVideoElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
