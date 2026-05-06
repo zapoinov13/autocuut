@@ -3,15 +3,22 @@
 export type StyleId = "viral_tiktok" | "podcast_clips" | "educational" | "mrbeast_pacing" | "clean_minimal" | "bold_neon" | "custom";
 
 export const FONT_OPTIONS = [
-  { value: "Inter", label: "Inter (Modern Sans)" },
-  { value: "Montserrat", label: "Montserrat (Clean)" },
-  { value: "Anton", label: "Anton (Bold Display)" },
-  { value: "Bebas Neue", label: "Bebas Neue (Tall Caps)" },
-  { value: "Poppins", label: "Poppins (Friendly)" },
+  { value: "Inter", label: "Inter" },
+  { value: "Manrope", label: "Manrope" },
+  { value: "Outfit", label: "Outfit" },
+  { value: "DM Sans", label: "DM Sans" },
+  { value: "Space Grotesk", label: "Space Grotesk" },
+  { value: "Plus Jakarta Sans", label: "Plus Jakarta Sans" },
+  { value: "Montserrat", label: "Montserrat" },
+  { value: "Poppins", label: "Poppins" },
+  { value: "Rubik", label: "Rubik" },
+  { value: "Roboto", label: "Roboto" },
   { value: "Oswald", label: "Oswald (Condensed)" },
+  { value: "Anton", label: "Anton (Display)" },
+  { value: "Bebas Neue", label: "Bebas Neue (Tall Caps)" },
   { value: "Archivo Black", label: "Archivo Black (Heavy)" },
-  { value: "Rubik", label: "Rubik (Rounded)" },
-  { value: "Roboto", label: "Roboto (Neutral)" },
+  { value: "Permanent Marker", label: "Permanent Marker" },
+  { value: "Caveat", label: "Caveat (Handwriting)" },
 ] as const;
 
 export type FontFamily = (typeof FONT_OPTIONS)[number]["value"];
