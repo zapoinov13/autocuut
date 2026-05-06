@@ -26,6 +26,8 @@ const Editor = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
+  const [styleSheetOpen, setStyleSheetOpen] = useState(false);
+  const [styleTab, setStyleTab] = useState<"presets" | "custom">("presets");
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
@@ -76,9 +78,17 @@ const Editor = () => {
   const styleId = project.style as StyleId;
   const format = (project.format as VideoFormat) ?? "stories";
   const formatMeta = FORMATS.find((f) => f.id === format)!;
-  const effectiveStyle: SubtitleStyle = {
-    ...(styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)),
-    position: (project.subtitle_position as any) ?? (styleId === "custom" ? customStyle.position : getEffectiveSubtitleStyle(styleId).position),
+  const subtitleY = Number((project as any).subtitle_y ?? 80);
+  const effectiveStyle: SubtitleStyle = styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId);
+
+  const updateSubtitleY = async (y: number) => {
+    qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, subtitle_y: y } } : old);
+    await supabase.from("projects").update({ subtitle_y: y } as any).eq("id", id!);
+  };
+
+  const openSubtitleEditor = (tab: "presets" | "custom" = "custom") => {
+    setStyleTab(tab);
+    setStyleSheetOpen(true);
   };
 
   return (
@@ -111,6 +121,7 @@ const Editor = () => {
               musicUrl={project.music_url as any}
               musicVolume={project.music_volume ?? 20}
               captionsEnabled={project.captions_enabled ?? true}
+              subtitleY={subtitleY}
               trigger={
                 <Button className="shadow-glow">
                   <Download className="mr-2 h-4 w-4" />
@@ -138,6 +149,14 @@ const Editor = () => {
               styleId={styleId}
               onPick={handleStyleChange}
               onCustomChange={setCustomStyle}
+              subtitleY={subtitleY}
+              onSubtitleYChange={updateSubtitleY}
+              open={styleSheetOpen}
+              onOpenChange={setStyleSheetOpen}
+              defaultTab={styleTab}
+              trigger={
+                <ToolButton icon={Captions} label="Стиль субтитров" />
+              }
             />
             <ScenesPanel
               projectId={project.id}
@@ -178,6 +197,9 @@ const Editor = () => {
             <VideoPreview
               videoUrl={videoUrl}
               subtitleStyle={effectiveStyle}
+              subtitleY={subtitleY}
+              onSubtitleYChange={updateSubtitleY}
+              onEditSubtitle={() => openSubtitleEditor("custom")}
               words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
               format={format}

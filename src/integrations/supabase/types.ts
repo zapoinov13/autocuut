@@ -92,6 +92,7 @@ export type Database = {
           status: Database["public"]["Enums"]["project_status"]
           style: string
           subtitle_position: string
+          subtitle_y: number
           thumbnail_url: string | null
           title: string
           title_suggestion: string | null
@@ -117,6 +118,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
           subtitle_position?: string
+          subtitle_y?: number
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null
@@ -142,6 +144,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["project_status"]
           style?: string
           subtitle_position?: string
+          subtitle_y?: number
           thumbnail_url?: string | null
           title?: string
           title_suggestion?: string | null

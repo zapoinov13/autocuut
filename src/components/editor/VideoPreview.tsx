@@ -17,9 +17,16 @@ interface Props {
   format?: VideoFormat;
   musicUrl?: string | null;
   musicVolume?: number;
+  subtitleY?: number;
+  onSubtitleYChange?: (y: number) => void;
+  onEditSubtitle?: () => void;
 }
 
-export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, format = "stories", musicUrl, musicVolume = 20 }: Props) => {
+export const VideoPreview = ({
+  videoUrl, subtitleStyle: sub, words, scenes,
+  format = "stories", musicUrl, musicVolume = 20,
+  subtitleY = 80, onSubtitleYChange, onEditSubtitle,
+}: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const topVideoRef = useRef<HTMLVideoElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
@@ -114,10 +121,30 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, form
     else el.requestFullscreen?.();
   };
 
-  const positionClass =
-    sub.position === "center" ? "top-1/2 -translate-y-1/2"
-    : sub.position === "top" ? "top-[8%]"
-    : "bottom-[10%]";
+  // Drag subtitles vertically
+  const [dragging, setDragging] = useState(false);
+  const [localY, setLocalY] = useState(subtitleY);
+  useEffect(() => { if (!dragging) setLocalY(subtitleY); }, [subtitleY, dragging]);
+
+  const onSubPointerDown = (e: React.PointerEvent) => {
+    if (!onSubtitleYChange) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onSubPointerMove = (e: React.PointerEvent) => {
+    if (!dragging || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setLocalY(Math.max(5, Math.min(95, y)));
+  };
+  const onSubPointerUp = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setDragging(false);
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    onSubtitleYChange?.(localY);
+  };
 
   const textShadow = sub.shadowBlur > 0 ? `0 4px ${sub.shadowBlur}px ${sub.shadowColor}` : undefined;
   const stroke = sub.strokeWidth > 0 ? `${sub.strokeWidth}px ${sub.strokeColor}` : undefined;
@@ -194,8 +221,16 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, form
 
       {visibleWords.length > 0 && (
         <div
-          className={`absolute left-4 right-4 ${positionClass} pointer-events-none flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20`}
+          onPointerDown={onSubPointerDown}
+          onPointerMove={onSubPointerMove}
+          onPointerUp={onSubPointerUp}
+          onPointerCancel={onSubPointerUp}
+          onDoubleClick={(e) => { e.stopPropagation(); onEditSubtitle?.(); }}
+          className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20 select-none group/sub ${
+            onSubtitleYChange ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
+          }`}
           style={{
+            top: `${localY}%`,
             fontSize: `${sub.fontSize}px`,
             fontWeight: sub.fontWeight,
             color: sub.color,
@@ -207,6 +242,9 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, form
             borderRadius: hasBg ? "10px" : undefined,
             lineHeight: 1.15,
             fontFamily: `"${sub.fontFamily}", system-ui, -apple-system, sans-serif`,
+            outline: dragging ? "2px dashed rgba(255,255,255,0.6)" : undefined,
+            outlineOffset: 4,
+            transition: dragging ? "none" : "top 0.15s ease-out",
           }}
         >
           {visibleWords.map((w, i) => {
@@ -229,6 +267,15 @@ export const VideoPreview = ({ videoUrl, subtitleStyle: sub, words, scenes, form
               </span>
             );
           })}
+          {onEditSubtitle && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEditSubtitle(); }}
+              className="absolute -top-9 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-md bg-black/80 text-white text-[11px] opacity-0 group-hover/sub:opacity-100 transition-opacity whitespace-nowrap pointer-events-auto"
+            >
+              ✏️ Редактировать стиль
+            </button>
+          )}
         </div>
       )}
 
