@@ -22,6 +22,7 @@ interface Props {
   musicUrl?: string | null;
   musicVolume?: number;
   captionsEnabled: boolean;
+  subtitleY?: number;
 }
 
 const QUALITIES = [
