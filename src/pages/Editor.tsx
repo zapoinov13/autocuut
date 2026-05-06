@@ -121,6 +121,7 @@ const Editor = () => {
               musicUrl={project.music_url as any}
               musicVolume={project.music_volume ?? 20}
               captionsEnabled={project.captions_enabled ?? true}
+              subtitleY={subtitleY}
               trigger={
                 <Button className="shadow-glow">
                   <Download className="mr-2 h-4 w-4" />
