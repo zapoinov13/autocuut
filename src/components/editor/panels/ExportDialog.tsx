@@ -49,7 +49,7 @@ async function loadVideoElement(src: string): Promise<HTMLVideoElement> {
 }
 
 export const ExportDialog = (props: Props) => {
-  const { trigger, projectTitle, videoUrl, words, scenes, subtitleStyle: sub, format, musicUrl, musicVolume = 20, captionsEnabled } = props;
+  const { trigger, projectTitle, videoUrl, words, scenes, subtitleStyle: sub, format, musicUrl, musicVolume = 20, captionsEnabled, subtitleY = 80 } = props;
   const [quality, setQuality] = useState("1080p");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
