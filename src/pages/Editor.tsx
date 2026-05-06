@@ -78,9 +78,17 @@ const Editor = () => {
   const styleId = project.style as StyleId;
   const format = (project.format as VideoFormat) ?? "stories";
   const formatMeta = FORMATS.find((f) => f.id === format)!;
-  const effectiveStyle: SubtitleStyle = {
-    ...(styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId)),
-    position: (project.subtitle_position as any) ?? (styleId === "custom" ? customStyle.position : getEffectiveSubtitleStyle(styleId).position),
+  const subtitleY = Number((project as any).subtitle_y ?? 80);
+  const effectiveStyle: SubtitleStyle = styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId);
+
+  const updateSubtitleY = async (y: number) => {
+    qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, subtitle_y: y } } : old);
+    await supabase.from("projects").update({ subtitle_y: y } as any).eq("id", id!);
+  };
+
+  const openSubtitleEditor = (tab: "presets" | "custom" = "custom") => {
+    setStyleTab(tab);
+    setStyleSheetOpen(true);
   };
 
   return (
