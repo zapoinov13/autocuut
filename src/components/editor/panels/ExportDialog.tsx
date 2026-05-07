@@ -333,7 +333,13 @@ function drawSubtitles(
 
   const highlightSet = new Set((scene?.highlight_words ?? []).map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")));
 
-  const text = visible.map((w) => sub.uppercase ? w.text.toUpperCase() : w.text).join(" ");
+  const preparedWords = visible.map((w) => ({
+    raw: w.text,
+    text: sub.uppercase ? w.text.toUpperCase() : w.text,
+    active: t >= w.start && t < w.end,
+  }));
+  const wordGap = Math.round((sub.wordGap ?? 8) * (H / 720));
+  const text = preparedWords.map((w) => w.text).join(" ");
 
   const maxWidth = W * 0.9;
   const lines: string[] = [];
@@ -380,11 +386,12 @@ function drawSubtitles(
     const lineWords = line.split(" ");
     const lineW = ctx.measureText(line).width;
     let xCursor = (W - lineW) / 2;
-    const spaceW = ctx.measureText(" ").width;
+    const spaceW = ctx.measureText(" ").width + wordGap;
 
     for (const w of lineWords) {
       const cleaned = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-      const isHl = highlightSet.has(cleaned);
+      const sourceWord = preparedWords.find((pw) => pw.text === w || pw.text.replace(/[^\p{L}\p{N}]/gu, "") === cleaned);
+      const isHl = Boolean(sourceWord?.active) || highlightSet.has(cleaned);
       const color = isHl ? sub.highlightColor : sub.color;
       const wW = ctx.measureText(w).width;
       const xCenter = xCursor + wW / 2;
