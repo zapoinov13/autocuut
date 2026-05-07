@@ -161,6 +161,16 @@ export const StylePanel = ({
 
               <div>
                 <div className="flex justify-between items-center">
+                  <Label className="text-xs">Слов на экране</Label>
+                  <span className="text-xs text-muted-foreground tabular-nums">{custom.maxWords ?? 2}</span>
+                </div>
+                <Slider value={[custom.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
+                  onValueChange={(v) => update("maxWords", v[0])} />
+                <p className="text-[10px] text-muted-foreground mt-1.5">💡 1-2 слова = вирусный TikTok-стиль</p>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center">
                   <Label className="text-xs">Размер</Label>
                   <span className="text-xs text-muted-foreground tabular-nums">{custom.fontSize}px</span>
                 </div>
