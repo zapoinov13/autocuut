@@ -237,20 +237,20 @@ export const StylePanel = ({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <ColorPick label="Цвет текста" value={custom.color} onChange={(v) => update("color", v)} />
-                <ColorPick label="Подсветка" value={custom.highlightColor} onChange={(v) => update("highlightColor", v)} />
+                <ColorPick label="Цвет текста" value={activeStyle.color} onChange={(v) => update("color", v)} />
+                <ColorPick label="Подсветка" value={activeStyle.highlightColor} onChange={(v) => update("highlightColor", v)} />
               </div>
 
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Обводка</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.strokeWidth}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.strokeWidth}px</span>
                 </div>
-                <Slider value={[custom.strokeWidth]} min={0} max={6} step={0.5} className="mt-2"
+                <Slider value={[activeStyle.strokeWidth]} min={0} max={6} step={0.5} className="mt-2"
                   onValueChange={(v) => update("strokeWidth", v[0])} />
-                {custom.strokeWidth > 0 && (
+                {activeStyle.strokeWidth > 0 && (
                   <div className="mt-2">
-                    <ColorPick label="Цвет обводки" value={custom.strokeColor} onChange={(v) => update("strokeColor", v)} />
+                    <ColorPick label="Цвет обводки" value={activeStyle.strokeColor} onChange={(v) => update("strokeColor", v)} />
                   </div>
                 )}
               </div>
@@ -258,9 +258,9 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Тень</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.shadowBlur}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.shadowBlur}px</span>
                 </div>
-                <Slider value={[custom.shadowBlur]} min={0} max={30} step={1} className="mt-2"
+                <Slider value={[activeStyle.shadowBlur]} min={0} max={30} step={1} className="mt-2"
                   onValueChange={(v) => update("shadowBlur", v[0])} />
               </div>
 
