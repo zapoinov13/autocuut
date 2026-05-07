@@ -44,7 +44,7 @@ export interface SubtitleStyle {
   shadowColor: string;
   uppercase: boolean;
   position: SubtitlePosition;
-  maxWords: number; // 1-3 words on screen at a time
+  maxWords?: number; // 1-3 words on screen at a time (default 2)
 }
 
 export interface MontageStyle {
