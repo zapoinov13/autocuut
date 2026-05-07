@@ -123,18 +123,22 @@ export const VideoPreview = ({
 
   // Drag subtitles vertically
   const [dragging, setDragging] = useState(false);
+  const [moved, setMoved] = useState(false);
+  const dragStartY = useRef(0);
   const [localY, setLocalY] = useState(subtitleY);
   useEffect(() => { if (!dragging) setLocalY(subtitleY); }, [subtitleY, dragging]);
 
   const onSubPointerDown = (e: React.PointerEvent) => {
     if (!onSubtitleYChange) return;
     e.stopPropagation();
-    e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragStartY.current = e.clientY;
     setDragging(true);
+    setMoved(false);
   };
   const onSubPointerMove = (e: React.PointerEvent) => {
     if (!dragging || !containerRef.current) return;
+    if (Math.abs(e.clientY - dragStartY.current) > 4) setMoved(true);
     const rect = containerRef.current.getBoundingClientRect();
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     setLocalY(Math.max(5, Math.min(95, y)));
@@ -142,8 +146,8 @@ export const VideoPreview = ({
   const onSubPointerUp = (e: React.PointerEvent) => {
     if (!dragging) return;
     setDragging(false);
-    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
-    onSubtitleYChange?.(localY);
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    if (moved) onSubtitleYChange?.(localY);
   };
 
   const textShadow = sub.shadowBlur > 0 ? `0 4px ${sub.shadowBlur}px ${sub.shadowColor}` : undefined;
@@ -225,7 +229,7 @@ export const VideoPreview = ({
           onPointerMove={onSubPointerMove}
           onPointerUp={onSubPointerUp}
           onPointerCancel={onSubPointerUp}
-          onDoubleClick={(e) => { e.stopPropagation(); onEditSubtitle?.(); }}
+          onClick={(e) => { e.stopPropagation(); if (!moved) onEditSubtitle?.(); }}
           className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20 select-none group/sub ${
             onSubtitleYChange ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
           }`}
