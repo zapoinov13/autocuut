@@ -274,7 +274,7 @@ export const StylePanel = ({
                   ].map((o) => (
                     <button key={o.v} onClick={() => update("background", o.v)}
                       className={`text-xs h-9 rounded-md border ${
-                        custom.background === o.v ? "border-primary bg-primary/5" : "border-border/60"
+                        activeStyle.background === o.v ? "border-primary bg-primary/5" : "border-border/60"
                       }`}>{o.l}</button>
                   ))}
                 </div>
@@ -282,7 +282,7 @@ export const StylePanel = ({
 
               <div className="flex items-center justify-between p-3 rounded-md bg-surface-1">
                 <Label className="text-sm">ВЕРХНИЙ РЕГИСТР</Label>
-                <Switch checked={custom.uppercase} onCheckedChange={(v) => update("uppercase", v)} />
+                <Switch checked={activeStyle.uppercase} onCheckedChange={(v) => update("uppercase", v)} />
               </div>
 
               {/* Live preview */}
