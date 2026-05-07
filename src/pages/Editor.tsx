@@ -28,6 +28,8 @@ const Editor = () => {
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
   const [styleSheetOpen, setStyleSheetOpen] = useState(false);
   const [styleTab, setStyleTab] = useState<"presets" | "custom">("presets");
+  const [localStyleId, setLocalStyleId] = useState<StyleId | null>(null);
+  const [localSubtitleY, setLocalSubtitleY] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
@@ -55,9 +57,10 @@ const Editor = () => {
   }, [data?.project?.video_path]);
 
   const handleStyleChange = async (newStyle: StyleId) => {
+    setLocalStyleId(newStyle);
+    qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, style: newStyle } } : old);
     await supabase.from("projects").update({ style: newStyle }).eq("id", id);
-    qc.invalidateQueries({ queryKey: ["editor", id] });
-    toast.success(`Стиль изменён на ${STYLES[newStyle].name}`);
+    if (newStyle !== "custom") toast.success(`Стиль: ${STYLES[newStyle].name}`);
   };
 
   const toggleProjectField = async (field: "captions_enabled" | "clean_audio", value: boolean) => {
@@ -75,13 +78,14 @@ const Editor = () => {
   }
 
   const { project, scenes, words } = data;
-  const styleId = project.style as StyleId;
+  const styleId = (localStyleId ?? project.style) as StyleId;
   const format = (project.format as VideoFormat) ?? "stories";
   const formatMeta = FORMATS.find((f) => f.id === format)!;
-  const subtitleY = Number((project as any).subtitle_y ?? 80);
+  const subtitleY = localSubtitleY ?? Number((project as any).subtitle_y ?? 80);
   const effectiveStyle: SubtitleStyle = styleId === "custom" ? customStyle : getEffectiveSubtitleStyle(styleId);
 
   const updateSubtitleY = async (y: number) => {
+    setLocalSubtitleY(y);
     qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, subtitle_y: y } } : old);
     await supabase.from("projects").update({ subtitle_y: y } as any).eq("id", id!);
   };
