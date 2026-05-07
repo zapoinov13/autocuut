@@ -27,9 +27,10 @@ const Editor = () => {
   const qc = useQueryClient();
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
   const [styleSheetOpen, setStyleSheetOpen] = useState(false);
-  const [styleTab, setStyleTab] = useState<"presets" | "custom">("presets");
+  const [styleTab, setStyleTab] = useState<"presets" | "custom" | "text">("presets");
   const [localStyleId, setLocalStyleId] = useState<StyleId | null>(null);
   const [localSubtitleY, setLocalSubtitleY] = useState<number | null>(null);
+  const [localWords, setLocalWords] = useState<{ text: string; start: number; end: number }[] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
@@ -56,6 +57,10 @@ const Editor = () => {
     });
   }, [data?.project?.video_path]);
 
+  useEffect(() => {
+    if (!localWords && data?.words) setLocalWords(data.words);
+  }, [data?.words, localWords]);
+
   const handleStyleChange = async (newStyle: StyleId) => {
     setLocalStyleId(newStyle);
     qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, style: newStyle } } : old);
@@ -77,7 +82,8 @@ const Editor = () => {
     );
   }
 
-  const { project, scenes, words } = data;
+  const { project, scenes } = data;
+  const words = localWords ?? data.words;
   const styleId = (localStyleId ?? project.style) as StyleId;
   const format = (project.format as VideoFormat) ?? "stories";
   const formatMeta = FORMATS.find((f) => f.id === format)!;
@@ -90,7 +96,17 @@ const Editor = () => {
     await supabase.from("projects").update({ subtitle_y: y } as any).eq("id", id!);
   };
 
-  const openSubtitleEditor = (tab: "presets" | "custom" = "custom") => {
+  const updateSubtitleWords = async (nextWords: { text: string; start: number; end: number }[]) => {
+    setLocalWords(nextWords);
+    qc.setQueryData(["editor", id], (old: any) => old ? { ...old, words: nextWords } : old);
+    const { error } = await supabase.from("subtitles").update({ words: nextWords as any }).eq("project_id", id!);
+    if (error) {
+      toast.error("Не удалось сохранить титры", { description: error.message });
+      qc.invalidateQueries({ queryKey: ["editor", id] });
+    }
+  };
+
+  const openSubtitleEditor = (tab: "presets" | "custom" | "text" = "custom") => {
     setStyleTab(tab);
     setStyleSheetOpen(true);
   };
