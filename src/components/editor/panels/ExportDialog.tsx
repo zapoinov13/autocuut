@@ -364,7 +364,8 @@ function drawSubtitles(
   // background
   if (sub.background && sub.background !== "transparent") {
     ctx.fillStyle = sub.background;
-    const padX = fontSize * 0.4, padY = fontSize * 0.25;
+    const padX = Math.round((sub.paddingX ?? fontSize * 0.4) * (H / 720));
+    const padY = Math.round((sub.paddingY ?? fontSize * 0.25) * (H / 720));
     const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
     const bx = (W - maxLineW) / 2 - padX;
     const by = cy - totalH / 2 - padY;
