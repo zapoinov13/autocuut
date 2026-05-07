@@ -47,7 +47,8 @@ export const StylePanel = ({
   useEffect(() => { if (open) setSubtitleText(words.map((w) => w.text).join(" ")); }, [words, open]);
 
   const update = <K extends keyof SubtitleStyle>(key: K, value: SubtitleStyle[K]) => {
-    const next = { ...custom, [key]: value };
+    const base = styleId === "custom" ? custom : STYLES[styleId].subtitleStyle;
+    const next = { ...base, [key]: value };
     setCustom(next);
     saveCustomStyle(next);
     if (styleId !== "custom") onPick("custom");
@@ -90,9 +91,10 @@ export const StylePanel = ({
         </SheetHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="px-5 pt-4">
-          <TabsList className="grid grid-cols-2 w-full">
+          <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="presets">Стили</TabsTrigger>
             <TabsTrigger value="custom">Настройка</TabsTrigger>
+            <TabsTrigger value="text">Текст</TabsTrigger>
           </TabsList>
 
           {/* PRESETS */}
@@ -163,6 +165,25 @@ export const StylePanel = ({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Отступ слов</Label>
+                    <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.wordGap ?? 8}px</span>
+                  </div>
+                  <Slider value={[activeStyle.wordGap ?? 8]} min={0} max={28} step={1} className="mt-2"
+                    onValueChange={(v) => update("wordGap", v[0])} />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Отступ плашки</Label>
+                    <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.paddingX ?? 14}px</span>
+                  </div>
+                  <Slider value={[activeStyle.paddingX ?? 14]} min={0} max={36} step={1} className="mt-2"
+                    onValueChange={(v) => update("paddingX", v[0])} />
+                </div>
               </div>
 
               {/* Position Y */}
@@ -283,6 +304,32 @@ export const StylePanel = ({
                   Привет <span style={{ color: activeStyle.highlightColor }}>мир</span>!
                 </span>
               </div>
+            </div>
+          </TabsContent>
+
+          {/* TEXT */}
+          <TabsContent value="text" className="mt-4 pb-6">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Текст титров</Label>
+                <Textarea
+                  value={subtitleText}
+                  onChange={(e) => setSubtitleText(e.target.value)}
+                  className="mt-1.5 min-h-[260px] text-sm leading-relaxed bg-surface-1"
+                  placeholder="Текст субтитров..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={normalizeText}>
+                  <Wand2 className="h-4 w-4 mr-2" /> Убрать пробелы
+                </Button>
+                <Button onClick={saveText} disabled={!subtitleText.trim() || words.length === 0}>
+                  <Save className="h-4 w-4 mr-2" /> Сохранить
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Если меняешь количество слов, тайминги распределятся автоматически по длине ролика.
+              </p>
             </div>
           </TabsContent>
         </Tabs>
