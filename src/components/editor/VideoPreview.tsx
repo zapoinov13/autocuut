@@ -42,10 +42,26 @@ export const VideoPreview = ({
     [scenes, currentTime],
   );
 
+  // Karaoke-style: show only current word + maybe next 1 (max 2 words on screen)
+  const MAX_WORDS = (sub as any).maxWords ?? 2;
   const visibleWords = useMemo(() => {
-    const window = 1.8;
-    return words.filter((w) => w.start <= currentTime + 0.1 && w.end > currentTime - window);
-  }, [words, currentTime]);
+    if (!words.length) return [];
+    // Find current word index
+    let idx = words.findIndex((w) => currentTime >= w.start && currentTime < w.end);
+    if (idx === -1) {
+      // Between words — find last finished word that ended within 0.25s
+      for (let i = words.length - 1; i >= 0; i--) {
+        if (words[i].end <= currentTime && currentTime - words[i].end < 0.25) { idx = i; break; }
+      }
+      if (idx === -1) {
+        // Look ahead — show upcoming word slightly before it starts
+        const upcoming = words.findIndex((w) => w.start > currentTime && w.start - currentTime < 0.15);
+        if (upcoming !== -1) idx = upcoming;
+      }
+    }
+    if (idx === -1) return [];
+    return words.slice(idx, idx + MAX_WORDS);
+  }, [words, currentTime, MAX_WORDS]);
 
   const highlightSet = useMemo(() => {
     if (!activeScene) return new Set<string>();

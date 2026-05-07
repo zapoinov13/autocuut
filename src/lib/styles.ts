@@ -44,6 +44,7 @@ export interface SubtitleStyle {
   shadowColor: string;
   uppercase: boolean;
   position: SubtitlePosition;
+  maxWords?: number; // 1-3 words on screen at a time (default 2)
 }
 
 export interface MontageStyle {
@@ -69,6 +70,7 @@ export const DEFAULT_CUSTOM_STYLE: SubtitleStyle = {
   shadowColor: "rgba(0,0,0,0.85)",
   uppercase: false,
   position: "center",
+  maxWords: 2,
 };
 
 export const STYLES: Record<StyleId, MontageStyle> = {
