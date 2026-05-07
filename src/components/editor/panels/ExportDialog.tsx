@@ -309,8 +309,19 @@ function drawSubtitles(
   H: number,
   subtitleY: number,
 ) {
-  const window = 1.8;
-  const visible = words.filter((w) => w.start <= t + 0.1 && w.end > t - window);
+  const MAX_WORDS = (sub as any).maxWords ?? 2;
+  let idx = words.findIndex((w) => t >= w.start && t < w.end);
+  if (idx === -1) {
+    for (let i = words.length - 1; i >= 0; i--) {
+      if (words[i].end <= t && t - words[i].end < 0.25) { idx = i; break; }
+    }
+    if (idx === -1) {
+      const up = words.findIndex((w) => w.start > t && w.start - t < 0.15);
+      if (up !== -1) idx = up;
+    }
+  }
+  if (idx === -1) return;
+  const visible = words.slice(idx, idx + MAX_WORDS);
   if (!visible.length) return;
 
   const baseRefH = 720;
