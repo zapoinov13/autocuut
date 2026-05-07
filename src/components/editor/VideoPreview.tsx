@@ -225,7 +225,7 @@ export const VideoPreview = ({
           onPointerMove={onSubPointerMove}
           onPointerUp={onSubPointerUp}
           onPointerCancel={onSubPointerUp}
-          onDoubleClick={(e) => { e.stopPropagation(); onEditSubtitle?.(); }}
+          onClick={(e) => { e.stopPropagation(); if (!dragging) onEditSubtitle?.(); }}
           className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20 select-none group/sub ${
             onSubtitleYChange ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
           }`}
