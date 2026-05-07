@@ -42,9 +42,9 @@ export interface SubtitleStyle {
   strokeColor: string;
   shadowBlur: number; // px
   shadowColor: string;
-  wordGap: number; // px between subtitle words
-  paddingX: number; // px horizontal subtitle background padding
-  paddingY: number; // px vertical subtitle background padding
+  wordGap?: number; // px between subtitle words
+  paddingX?: number; // px horizontal subtitle background padding
+  paddingY?: number; // px vertical subtitle background padding
   uppercase: boolean;
   position: SubtitlePosition;
   maxWords?: number; // 1-3 words on screen at a time (default 2)
