@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -268,12 +268,13 @@ const SectionTitle = ({ children, className = "" }: { children: React.ReactNode;
   <p className={`text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 ${className}`}>{children}</p>
 );
 
-const ToolButton = ({ icon: Icon, label }: { icon: any; label: string }) => (
-  <Button variant="outline" size="sm" className="h-10 justify-start w-full">
+const ToolButton = forwardRef<HTMLButtonElement, { icon: any; label: string }>(({ icon: Icon, label }, ref) => (
+  <Button ref={ref} variant="outline" size="sm" className="h-10 justify-start w-full">
     <Icon className="mr-2 h-4 w-4 text-primary" />
     <span className="text-sm truncate">{label}</span>
   </Button>
-);
+));
+ToolButton.displayName = "ToolButton";
 
 interface ToolBigProps {
   icon: any;
