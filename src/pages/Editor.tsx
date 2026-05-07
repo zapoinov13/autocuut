@@ -169,6 +169,8 @@ const Editor = () => {
               styleId={styleId}
               onPick={handleStyleChange}
               onCustomChange={setCustomStyle}
+              words={words}
+              onWordsChange={updateSubtitleWords}
               subtitleY={subtitleY}
               onSubtitleYChange={updateSubtitleY}
               open={styleSheetOpen}
@@ -219,7 +221,7 @@ const Editor = () => {
               subtitleStyle={effectiveStyle}
               subtitleY={subtitleY}
               onSubtitleYChange={updateSubtitleY}
-              onEditSubtitle={() => openSubtitleEditor("custom")}
+              onEditSubtitle={() => openSubtitleEditor("text")}
               words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
               format={format}
