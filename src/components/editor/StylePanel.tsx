@@ -153,7 +153,7 @@ export const StylePanel = ({
             <div className="space-y-4">
               <div>
                 <Label className="text-xs">Шрифт</Label>
-                <Select value={custom.fontFamily} onValueChange={(v) => update("fontFamily", v as any)}>
+                <Select value={activeStyle.fontFamily} onValueChange={(v) => update("fontFamily", v as any)}>
                   <SelectTrigger className="mt-1.5 h-9">
                     <SelectValue />
                   </SelectTrigger>
@@ -211,9 +211,9 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Слов на экране</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.maxWords ?? 2}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.maxWords ?? 2}</span>
                 </div>
-                <Slider value={[custom.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
+                <Slider value={[activeStyle.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
                   onValueChange={(v) => update("maxWords", v[0])} />
                 <p className="text-[10px] text-muted-foreground mt-1.5">💡 1-2 слова = вирусный TikTok-стиль</p>
               </div>
@@ -221,18 +221,18 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Размер</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.fontSize}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.fontSize}px</span>
                 </div>
-                <Slider value={[custom.fontSize]} min={14} max={84} step={1} className="mt-2"
+                <Slider value={[activeStyle.fontSize]} min={14} max={84} step={1} className="mt-2"
                   onValueChange={(v) => update("fontSize", v[0])} />
               </div>
 
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Жирность</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.fontWeight}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.fontWeight}</span>
                 </div>
-                <Slider value={[custom.fontWeight]} min={100} max={900} step={100} className="mt-2"
+                <Slider value={[activeStyle.fontWeight]} min={100} max={900} step={100} className="mt-2"
                   onValueChange={(v) => update("fontWeight", v[0])} />
               </div>
 
