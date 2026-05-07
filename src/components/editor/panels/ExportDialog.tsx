@@ -358,6 +358,10 @@ function drawSubtitles(
 
   const lineH = fontSize * 1.2;
   const totalH = lines.length * lineH;
+  const measureLine = (line: string) => {
+    const parts = line.split(" ").filter(Boolean);
+    return parts.reduce((sum, part) => sum + ctx.measureText(part).width, 0) + Math.max(0, parts.length - 1) * (ctx.measureText(" ").width + wordGap);
+  };
 
   const cy = (subtitleY / 100) * H;
 
@@ -366,12 +370,13 @@ function drawSubtitles(
     ctx.fillStyle = sub.background;
     const padX = Math.round((sub.paddingX ?? fontSize * 0.4) * (H / 720));
     const padY = Math.round((sub.paddingY ?? fontSize * 0.25) * (H / 720));
-    const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const maxLineW = Math.max(...lines.map(measureLine));
     const bx = (W - maxLineW) / 2 - padX;
     const by = cy - totalH / 2 - padY;
     ctx.fillRect(bx, by, maxLineW + padX * 2, totalH + padY * 2);
   }
 
+  let visibleWordIndex = 0;
   lines.forEach((line, i) => {
     const y = cy - totalH / 2 + lineH / 2 + i * lineH;
     // shadow
@@ -385,13 +390,13 @@ function drawSubtitles(
 
     // word-by-word color (highlight)
     const lineWords = line.split(" ");
-    const lineW = ctx.measureText(line).width;
+    const lineW = measureLine(line);
     let xCursor = (W - lineW) / 2;
     const spaceW = ctx.measureText(" ").width + wordGap;
 
     for (const w of lineWords) {
       const cleaned = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-      const sourceWord = preparedWords.find((pw) => pw.text === w || pw.text.replace(/[^\p{L}\p{N}]/gu, "") === cleaned);
+      const sourceWord = preparedWords[visibleWordIndex++];
       const isHl = Boolean(sourceWord?.active) || highlightSet.has(cleaned);
       const color = isHl ? sub.highlightColor : sub.color;
       const wW = ctx.measureText(w).width;
