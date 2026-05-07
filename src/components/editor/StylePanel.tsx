@@ -3,10 +3,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RotateCcw, ArrowUp, AlignVerticalJustifyCenter, ArrowDown } from "lucide-react";
+import { RotateCcw, ArrowUp, AlignVerticalJustifyCenter, ArrowDown, Wand2, Save } from "lucide-react";
 import {
   STYLE_LIST, STYLES, StyleId, SubtitleStyle, FONT_OPTIONS,
   DEFAULT_CUSTOM_STYLE, loadCustomStyle, saveCustomStyle,
@@ -18,34 +19,62 @@ interface Props {
   styleId: StyleId;
   onPick: (id: StyleId) => void;
   onCustomChange: (s: SubtitleStyle) => void;
+  words: Word[];
+  onWordsChange: (words: Word[]) => void | Promise<void>;
   subtitleY: number;
   onSubtitleYChange: (y: number) => void;
   trigger?: ReactNode;
-  defaultTab?: "presets" | "custom";
+  defaultTab?: "presets" | "custom" | "text";
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
 }
 
+interface Word { text: string; start: number; end: number; }
+
 export const StylePanel = ({
   styleId, onPick, onCustomChange,
+  words, onWordsChange,
   subtitleY, onSubtitleYChange,
   trigger, defaultTab = "presets",
   open, onOpenChange,
 }: Props) => {
   const [custom, setCustom] = useState<SubtitleStyle>(() => loadCustomStyle());
-  const [tab, setTab] = useState<"presets" | "custom">(defaultTab);
+  const [tab, setTab] = useState<"presets" | "custom" | "text">(defaultTab);
+  const [subtitleText, setSubtitleText] = useState(() => words.map((w) => w.text).join(" "));
 
   useEffect(() => { setTab(defaultTab); }, [defaultTab, open]);
   useEffect(() => { onCustomChange(custom); }, [custom, onCustomChange]);
+  useEffect(() => { if (open) setSubtitleText(words.map((w) => w.text).join(" ")); }, [words, open]);
 
   const update = <K extends keyof SubtitleStyle>(key: K, value: SubtitleStyle[K]) => {
-    const next = { ...custom, [key]: value };
+    const base = styleId === "custom" ? custom : STYLES[styleId].subtitleStyle;
+    const next = { ...base, [key]: value };
     setCustom(next);
     saveCustomStyle(next);
     if (styleId !== "custom") onPick("custom");
   };
 
   const activeStyle: SubtitleStyle = styleId === "custom" ? custom : STYLES[styleId].subtitleStyle;
+
+  const normalizeText = () => setSubtitleText((text) => text.replace(/\s+/g, " ").trim());
+  const saveText = async () => {
+    const nextText = subtitleText.replace(/\s+/g, " ").trim();
+    if (!nextText || words.length === 0) return;
+    const tokens = nextText.split(" ");
+    const firstStart = words[0]?.start ?? 0;
+    const lastEnd = words.at(-1)?.end ?? firstStart + tokens.length * 0.35;
+    const total = Math.max(0.1, lastEnd - firstStart);
+    const nextWords = tokens.map((text, i) => {
+      const existing = words[i];
+      if (existing && tokens.length === words.length) return { ...existing, text };
+      const start = firstStart + (total * i) / tokens.length;
+      const end = firstStart + (total * (i + 1)) / tokens.length;
+      return { text, start: Number(start.toFixed(3)), end: Number(end.toFixed(3)) };
+    });
+    setSubtitleText(nextText);
+    await onWordsChange(nextWords);
+    toast.success("Титры обновлены");
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -62,9 +91,10 @@ export const StylePanel = ({
         </SheetHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="px-5 pt-4">
-          <TabsList className="grid grid-cols-2 w-full">
+          <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="presets">Стили</TabsTrigger>
             <TabsTrigger value="custom">Настройка</TabsTrigger>
+            <TabsTrigger value="text">Текст</TabsTrigger>
           </TabsList>
 
           {/* PRESETS */}
@@ -123,7 +153,7 @@ export const StylePanel = ({
             <div className="space-y-4">
               <div>
                 <Label className="text-xs">Шрифт</Label>
-                <Select value={custom.fontFamily} onValueChange={(v) => update("fontFamily", v as any)}>
+                <Select value={activeStyle.fontFamily} onValueChange={(v) => update("fontFamily", v as any)}>
                   <SelectTrigger className="mt-1.5 h-9">
                     <SelectValue />
                   </SelectTrigger>
@@ -135,6 +165,25 @@ export const StylePanel = ({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Отступ слов</Label>
+                    <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.wordGap ?? 8}px</span>
+                  </div>
+                  <Slider value={[activeStyle.wordGap ?? 8]} min={0} max={28} step={1} className="mt-2"
+                    onValueChange={(v) => update("wordGap", v[0])} />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Отступ плашки</Label>
+                    <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.paddingX ?? 14}px</span>
+                  </div>
+                  <Slider value={[activeStyle.paddingX ?? 14]} min={0} max={36} step={1} className="mt-2"
+                    onValueChange={(v) => update("paddingX", v[0])} />
+                </div>
               </div>
 
               {/* Position Y */}
@@ -162,9 +211,9 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Слов на экране</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.maxWords ?? 2}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.maxWords ?? 2}</span>
                 </div>
-                <Slider value={[custom.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
+                <Slider value={[activeStyle.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
                   onValueChange={(v) => update("maxWords", v[0])} />
                 <p className="text-[10px] text-muted-foreground mt-1.5">💡 1-2 слова = вирусный TikTok-стиль</p>
               </div>
@@ -172,36 +221,36 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Размер</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.fontSize}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.fontSize}px</span>
                 </div>
-                <Slider value={[custom.fontSize]} min={14} max={84} step={1} className="mt-2"
+                <Slider value={[activeStyle.fontSize]} min={14} max={84} step={1} className="mt-2"
                   onValueChange={(v) => update("fontSize", v[0])} />
               </div>
 
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Жирность</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.fontWeight}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.fontWeight}</span>
                 </div>
-                <Slider value={[custom.fontWeight]} min={100} max={900} step={100} className="mt-2"
+                <Slider value={[activeStyle.fontWeight]} min={100} max={900} step={100} className="mt-2"
                   onValueChange={(v) => update("fontWeight", v[0])} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <ColorPick label="Цвет текста" value={custom.color} onChange={(v) => update("color", v)} />
-                <ColorPick label="Подсветка" value={custom.highlightColor} onChange={(v) => update("highlightColor", v)} />
+                <ColorPick label="Цвет текста" value={activeStyle.color} onChange={(v) => update("color", v)} />
+                <ColorPick label="Подсветка" value={activeStyle.highlightColor} onChange={(v) => update("highlightColor", v)} />
               </div>
 
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Обводка</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.strokeWidth}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.strokeWidth}px</span>
                 </div>
-                <Slider value={[custom.strokeWidth]} min={0} max={6} step={0.5} className="mt-2"
+                <Slider value={[activeStyle.strokeWidth]} min={0} max={6} step={0.5} className="mt-2"
                   onValueChange={(v) => update("strokeWidth", v[0])} />
-                {custom.strokeWidth > 0 && (
+                {activeStyle.strokeWidth > 0 && (
                   <div className="mt-2">
-                    <ColorPick label="Цвет обводки" value={custom.strokeColor} onChange={(v) => update("strokeColor", v)} />
+                    <ColorPick label="Цвет обводки" value={activeStyle.strokeColor} onChange={(v) => update("strokeColor", v)} />
                   </div>
                 )}
               </div>
@@ -209,9 +258,9 @@ export const StylePanel = ({
               <div>
                 <div className="flex justify-between items-center">
                   <Label className="text-xs">Тень</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{custom.shadowBlur}px</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.shadowBlur}px</span>
                 </div>
-                <Slider value={[custom.shadowBlur]} min={0} max={30} step={1} className="mt-2"
+                <Slider value={[activeStyle.shadowBlur]} min={0} max={30} step={1} className="mt-2"
                   onValueChange={(v) => update("shadowBlur", v[0])} />
               </div>
 
@@ -225,7 +274,7 @@ export const StylePanel = ({
                   ].map((o) => (
                     <button key={o.v} onClick={() => update("background", o.v)}
                       className={`text-xs h-9 rounded-md border ${
-                        custom.background === o.v ? "border-primary bg-primary/5" : "border-border/60"
+                        activeStyle.background === o.v ? "border-primary bg-primary/5" : "border-border/60"
                       }`}>{o.l}</button>
                   ))}
                 </div>
@@ -233,7 +282,7 @@ export const StylePanel = ({
 
               <div className="flex items-center justify-between p-3 rounded-md bg-surface-1">
                 <Label className="text-sm">ВЕРХНИЙ РЕГИСТР</Label>
-                <Switch checked={custom.uppercase} onCheckedChange={(v) => update("uppercase", v)} />
+                <Switch checked={activeStyle.uppercase} onCheckedChange={(v) => update("uppercase", v)} />
               </div>
 
               {/* Live preview */}
@@ -255,6 +304,32 @@ export const StylePanel = ({
                   Привет <span style={{ color: activeStyle.highlightColor }}>мир</span>!
                 </span>
               </div>
+            </div>
+          </TabsContent>
+
+          {/* TEXT */}
+          <TabsContent value="text" className="mt-4 pb-6">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Текст титров</Label>
+                <Textarea
+                  value={subtitleText}
+                  onChange={(e) => setSubtitleText(e.target.value)}
+                  className="mt-1.5 min-h-[260px] text-sm leading-relaxed bg-surface-1"
+                  placeholder="Текст субтитров..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={normalizeText}>
+                  <Wand2 className="h-4 w-4 mr-2" /> Убрать пробелы
+                </Button>
+                <Button onClick={saveText} disabled={!subtitleText.trim() || words.length === 0}>
+                  <Save className="h-4 w-4 mr-2" /> Сохранить
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Если меняешь количество слов, тайминги распределятся автоматически по длине ролика.
+              </p>
             </div>
           </TabsContent>
         </Tabs>

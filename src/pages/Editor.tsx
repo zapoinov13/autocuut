@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,9 +27,10 @@ const Editor = () => {
   const qc = useQueryClient();
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
   const [styleSheetOpen, setStyleSheetOpen] = useState(false);
-  const [styleTab, setStyleTab] = useState<"presets" | "custom">("presets");
+  const [styleTab, setStyleTab] = useState<"presets" | "custom" | "text">("presets");
   const [localStyleId, setLocalStyleId] = useState<StyleId | null>(null);
   const [localSubtitleY, setLocalSubtitleY] = useState<number | null>(null);
+  const [localWords, setLocalWords] = useState<{ text: string; start: number; end: number }[] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
@@ -56,6 +57,10 @@ const Editor = () => {
     });
   }, [data?.project?.video_path]);
 
+  useEffect(() => {
+    if (!localWords && data?.words) setLocalWords(data.words);
+  }, [data?.words, localWords]);
+
   const handleStyleChange = async (newStyle: StyleId) => {
     setLocalStyleId(newStyle);
     qc.setQueryData(["editor", id], (old: any) => old ? { ...old, project: { ...old.project, style: newStyle } } : old);
@@ -77,7 +82,8 @@ const Editor = () => {
     );
   }
 
-  const { project, scenes, words } = data;
+  const { project, scenes } = data;
+  const words = localWords ?? data.words;
   const styleId = (localStyleId ?? project.style) as StyleId;
   const format = (project.format as VideoFormat) ?? "stories";
   const formatMeta = FORMATS.find((f) => f.id === format)!;
@@ -90,7 +96,17 @@ const Editor = () => {
     await supabase.from("projects").update({ subtitle_y: y } as any).eq("id", id!);
   };
 
-  const openSubtitleEditor = (tab: "presets" | "custom" = "custom") => {
+  const updateSubtitleWords = async (nextWords: { text: string; start: number; end: number }[]) => {
+    setLocalWords(nextWords);
+    qc.setQueryData(["editor", id], (old: any) => old ? { ...old, words: nextWords } : old);
+    const { error } = await supabase.from("subtitles").update({ words: nextWords as any }).eq("project_id", id!);
+    if (error) {
+      toast.error("Не удалось сохранить титры", { description: error.message });
+      qc.invalidateQueries({ queryKey: ["editor", id] });
+    }
+  };
+
+  const openSubtitleEditor = (tab: "presets" | "custom" | "text" = "custom") => {
     setStyleTab(tab);
     setStyleSheetOpen(true);
   };
@@ -153,6 +169,8 @@ const Editor = () => {
               styleId={styleId}
               onPick={handleStyleChange}
               onCustomChange={setCustomStyle}
+              words={words}
+              onWordsChange={updateSubtitleWords}
               subtitleY={subtitleY}
               onSubtitleYChange={updateSubtitleY}
               open={styleSheetOpen}
@@ -203,7 +221,7 @@ const Editor = () => {
               subtitleStyle={effectiveStyle}
               subtitleY={subtitleY}
               onSubtitleYChange={updateSubtitleY}
-              onEditSubtitle={() => openSubtitleEditor("custom")}
+              onEditSubtitle={() => openSubtitleEditor("text")}
               words={(project.captions_enabled ?? true) ? words : []}
               scenes={scenes as any}
               format={format}
@@ -250,12 +268,13 @@ const SectionTitle = ({ children, className = "" }: { children: React.ReactNode;
   <p className={`text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 ${className}`}>{children}</p>
 );
 
-const ToolButton = ({ icon: Icon, label }: { icon: any; label: string }) => (
-  <Button variant="outline" size="sm" className="h-10 justify-start w-full">
+const ToolButton = forwardRef<HTMLButtonElement, { icon: any; label: string }>(({ icon: Icon, label }, ref) => (
+  <Button ref={ref} variant="outline" size="sm" className="h-10 justify-start w-full">
     <Icon className="mr-2 h-4 w-4 text-primary" />
     <span className="text-sm truncate">{label}</span>
   </Button>
-);
+));
+ToolButton.displayName = "ToolButton";
 
 interface ToolBigProps {
   icon: any;

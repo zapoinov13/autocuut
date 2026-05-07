@@ -169,6 +169,9 @@ export const VideoPreview = ({
   const textShadow = sub.shadowBlur > 0 ? `0 4px ${sub.shadowBlur}px ${sub.shadowColor}` : undefined;
   const stroke = sub.strokeWidth > 0 ? `${sub.strokeWidth}px ${sub.strokeColor}` : undefined;
   const hasBg = sub.background && sub.background !== "transparent";
+  const wordGap = sub.wordGap ?? 8;
+  const paddingX = sub.paddingX ?? 14;
+  const paddingY = sub.paddingY ?? 8;
 
   const aspectRatio = format === "landscape" ? "16/9" : "9/16";
   const isSplit = format === "split";
@@ -246,11 +249,13 @@ export const VideoPreview = ({
           onPointerUp={onSubPointerUp}
           onPointerCancel={onSubPointerUp}
           onClick={(e) => { e.stopPropagation(); if (!moved) onEditSubtitle?.(); }}
-          className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 z-20 select-none group/sub ${
+          className={`absolute left-3 right-3 -translate-y-1/2 flex flex-wrap items-center justify-center z-20 select-none group/sub ${
             onSubtitleYChange ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
           }`}
           style={{
             top: `${localY}%`,
+            columnGap: `${wordGap}px`,
+            rowGap: `${Math.max(2, Math.round(wordGap / 2))}px`,
             fontSize: `${sub.fontSize}px`,
             fontWeight: sub.fontWeight,
             color: sub.color,
@@ -258,7 +263,7 @@ export const VideoPreview = ({
             textTransform: sub.uppercase ? "uppercase" : "none",
             WebkitTextStroke: stroke,
             background: hasBg ? sub.background : undefined,
-            padding: hasBg ? "8px 14px" : undefined,
+            padding: hasBg ? `${paddingY}px ${paddingX}px` : undefined,
             borderRadius: hasBg ? "10px" : undefined,
             lineHeight: 1.15,
             fontFamily: `"${sub.fontFamily}", system-ui, -apple-system, sans-serif`,
@@ -270,7 +275,7 @@ export const VideoPreview = ({
           {visibleWords.map((w, i) => {
             const isActive = currentTime >= w.start && currentTime < w.end;
             const cleaned = w.text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-            const isHighlight = highlightSet.has(cleaned);
+            const isHighlight = isActive || highlightSet.has(cleaned);
             const color = isHighlight ? sub.highlightColor : sub.color;
             return (
               <span

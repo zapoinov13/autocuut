@@ -42,6 +42,9 @@ export interface SubtitleStyle {
   strokeColor: string;
   shadowBlur: number; // px
   shadowColor: string;
+  wordGap?: number; // px between subtitle words
+  paddingX?: number; // px horizontal subtitle background padding
+  paddingY?: number; // px vertical subtitle background padding
   uppercase: boolean;
   position: SubtitlePosition;
   maxWords?: number; // 1-3 words on screen at a time (default 2)
@@ -68,6 +71,9 @@ export const DEFAULT_CUSTOM_STYLE: SubtitleStyle = {
   strokeColor: "#000000",
   shadowBlur: 12,
   shadowColor: "rgba(0,0,0,0.85)",
+  wordGap: 8,
+  paddingX: 14,
+  paddingY: 8,
   uppercase: false,
   position: "center",
   maxWords: 2,

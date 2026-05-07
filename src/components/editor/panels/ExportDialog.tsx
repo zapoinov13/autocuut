@@ -333,7 +333,13 @@ function drawSubtitles(
 
   const highlightSet = new Set((scene?.highlight_words ?? []).map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")));
 
-  const text = visible.map((w) => sub.uppercase ? w.text.toUpperCase() : w.text).join(" ");
+  const preparedWords = visible.map((w) => ({
+    raw: w.text,
+    text: sub.uppercase ? w.text.toUpperCase() : w.text,
+    active: t >= w.start && t < w.end,
+  }));
+  const wordGap = Math.round((sub.wordGap ?? 8) * (H / 720));
+  const text = preparedWords.map((w) => w.text).join(" ");
 
   const maxWidth = W * 0.9;
   const lines: string[] = [];
@@ -352,19 +358,25 @@ function drawSubtitles(
 
   const lineH = fontSize * 1.2;
   const totalH = lines.length * lineH;
+  const measureLine = (line: string) => {
+    const parts = line.split(" ").filter(Boolean);
+    return parts.reduce((sum, part) => sum + ctx.measureText(part).width, 0) + Math.max(0, parts.length - 1) * (ctx.measureText(" ").width + wordGap);
+  };
 
   const cy = (subtitleY / 100) * H;
 
   // background
   if (sub.background && sub.background !== "transparent") {
     ctx.fillStyle = sub.background;
-    const padX = fontSize * 0.4, padY = fontSize * 0.25;
-    const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const padX = Math.round((sub.paddingX ?? fontSize * 0.4) * (H / 720));
+    const padY = Math.round((sub.paddingY ?? fontSize * 0.25) * (H / 720));
+    const maxLineW = Math.max(...lines.map(measureLine));
     const bx = (W - maxLineW) / 2 - padX;
     const by = cy - totalH / 2 - padY;
     ctx.fillRect(bx, by, maxLineW + padX * 2, totalH + padY * 2);
   }
 
+  let visibleWordIndex = 0;
   lines.forEach((line, i) => {
     const y = cy - totalH / 2 + lineH / 2 + i * lineH;
     // shadow
@@ -378,13 +390,14 @@ function drawSubtitles(
 
     // word-by-word color (highlight)
     const lineWords = line.split(" ");
-    const lineW = ctx.measureText(line).width;
+    const lineW = measureLine(line);
     let xCursor = (W - lineW) / 2;
-    const spaceW = ctx.measureText(" ").width;
+    const spaceW = ctx.measureText(" ").width + wordGap;
 
     for (const w of lineWords) {
       const cleaned = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-      const isHl = highlightSet.has(cleaned);
+      const sourceWord = preparedWords[visibleWordIndex++];
+      const isHl = Boolean(sourceWord?.active) || highlightSet.has(cleaned);
       const color = isHl ? sub.highlightColor : sub.color;
       const wW = ctx.measureText(w).width;
       const xCenter = xCursor + wW / 2;
