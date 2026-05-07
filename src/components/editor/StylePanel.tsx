@@ -3,10 +3,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RotateCcw, ArrowUp, AlignVerticalJustifyCenter, ArrowDown } from "lucide-react";
+import { RotateCcw, ArrowUp, AlignVerticalJustifyCenter, ArrowDown, Wand2, Save } from "lucide-react";
 import {
   STYLE_LIST, STYLES, StyleId, SubtitleStyle, FONT_OPTIONS,
   DEFAULT_CUSTOM_STYLE, loadCustomStyle, saveCustomStyle,
@@ -18,25 +19,32 @@ interface Props {
   styleId: StyleId;
   onPick: (id: StyleId) => void;
   onCustomChange: (s: SubtitleStyle) => void;
+  words: Word[];
+  onWordsChange: (words: Word[]) => void | Promise<void>;
   subtitleY: number;
   onSubtitleYChange: (y: number) => void;
   trigger?: ReactNode;
-  defaultTab?: "presets" | "custom";
+  defaultTab?: "presets" | "custom" | "text";
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
 }
 
+interface Word { text: string; start: number; end: number; }
+
 export const StylePanel = ({
   styleId, onPick, onCustomChange,
+  words, onWordsChange,
   subtitleY, onSubtitleYChange,
   trigger, defaultTab = "presets",
   open, onOpenChange,
 }: Props) => {
   const [custom, setCustom] = useState<SubtitleStyle>(() => loadCustomStyle());
-  const [tab, setTab] = useState<"presets" | "custom">(defaultTab);
+  const [tab, setTab] = useState<"presets" | "custom" | "text">(defaultTab);
+  const [subtitleText, setSubtitleText] = useState(() => words.map((w) => w.text).join(" "));
 
   useEffect(() => { setTab(defaultTab); }, [defaultTab, open]);
   useEffect(() => { onCustomChange(custom); }, [custom, onCustomChange]);
+  useEffect(() => { if (open) setSubtitleText(words.map((w) => w.text).join(" ")); }, [words, open]);
 
   const update = <K extends keyof SubtitleStyle>(key: K, value: SubtitleStyle[K]) => {
     const next = { ...custom, [key]: value };
@@ -46,6 +54,26 @@ export const StylePanel = ({
   };
 
   const activeStyle: SubtitleStyle = styleId === "custom" ? custom : STYLES[styleId].subtitleStyle;
+
+  const normalizeText = () => setSubtitleText((text) => text.replace(/\s+/g, " ").trim());
+  const saveText = async () => {
+    const nextText = subtitleText.replace(/\s+/g, " ").trim();
+    if (!nextText || words.length === 0) return;
+    const tokens = nextText.split(" ");
+    const firstStart = words[0]?.start ?? 0;
+    const lastEnd = words.at(-1)?.end ?? firstStart + tokens.length * 0.35;
+    const total = Math.max(0.1, lastEnd - firstStart);
+    const nextWords = tokens.map((text, i) => {
+      const existing = words[i];
+      if (existing && tokens.length === words.length) return { ...existing, text };
+      const start = firstStart + (total * i) / tokens.length;
+      const end = firstStart + (total * (i + 1)) / tokens.length;
+      return { text, start: Number(start.toFixed(3)), end: Number(end.toFixed(3)) };
+    });
+    setSubtitleText(nextText);
+    await onWordsChange(nextWords);
+    toast.success("Титры обновлены");
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
