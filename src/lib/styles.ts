@@ -47,7 +47,8 @@ export interface SubtitleStyle {
   paddingY?: number; // px vertical subtitle background padding
   uppercase: boolean;
   position: SubtitlePosition;
-  maxWords?: number; // 1-3 words on screen at a time (default 2)
+  maxWords?: number; // max words per chunk on screen (default 3)
+  minChunkDuration?: number; // seconds — minimum time a chunk stays visible (default 1.2)
 }
 
 export interface MontageStyle {
