@@ -42,26 +42,47 @@ export const VideoPreview = ({
     [scenes, currentTime],
   );
 
-  // Karaoke-style: show only current word + maybe next 1 (max 2 words on screen)
-  const MAX_WORDS = (sub as any).maxWords ?? 2;
-  const visibleWords = useMemo(() => {
-    if (!words.length) return [];
-    // Find current word index
-    let idx = words.findIndex((w) => currentTime >= w.start && currentTime < w.end);
-    if (idx === -1) {
-      // Between words — find last finished word that ended within 0.25s
-      for (let i = words.length - 1; i >= 0; i--) {
-        if (words[i].end <= currentTime && currentTime - words[i].end < 0.25) { idx = i; break; }
-      }
-      if (idx === -1) {
-        // Look ahead — show upcoming word slightly before it starts
-        const upcoming = words.findIndex((w) => w.start > currentTime && w.start - currentTime < 0.15);
-        if (upcoming !== -1) idx = upcoming;
-      }
+  // Group words into stable phrase-chunks (CapCut/Submagic style)
+  const CHUNK_SIZE = Math.max(1, (sub as any).maxWords ?? 3);
+  const MIN_CHUNK_DURATION = 1.0; // seconds — minimum time a chunk stays visible
+  const MAX_CHUNK_CHARS = 36;
+
+  const chunks = useMemo(() => {
+    if (!words.length) return [] as { start: number; end: number; words: Word[] }[];
+    const out: { start: number; end: number; words: Word[] }[] = [];
+    let buf: Word[] = [];
+    const flush = () => {
+      if (!buf.length) return;
+      out.push({ start: buf[0].start, end: buf[buf.length - 1].end, words: buf });
+      buf = [];
+    };
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      buf.push(w);
+      const dur = buf[buf.length - 1].end - buf[0].start;
+      const chars = buf.reduce((a, x) => a + x.text.length + 1, 0);
+      const next = words[i + 1];
+      const gap = next ? next.start - w.end : 0;
+      const punct = /[.!?…,;:]$/.test(w.text);
+      const enoughTime = dur >= MIN_CHUNK_DURATION;
+      const maxedOut = buf.length >= CHUNK_SIZE || chars >= MAX_CHUNK_CHARS;
+      if (!next || maxedOut || (enoughTime && (punct || gap > 0.35))) flush();
     }
-    if (idx === -1) return [];
-    return words.slice(idx, idx + MAX_WORDS);
-  }, [words, currentTime, MAX_WORDS]);
+    flush();
+    // Stretch chunk end to next chunk start so caption stays visible during gaps
+    for (let i = 0; i < out.length - 1; i++) {
+      out[i].end = Math.max(out[i].end, out[i + 1].start - 0.05);
+    }
+    return out;
+  }, [words, CHUNK_SIZE]);
+
+  const currentChunk = useMemo(() => {
+    if (!chunks.length) return null;
+    const c = chunks.find((c) => currentTime >= c.start - 0.1 && currentTime < c.end);
+    return c ?? null;
+  }, [chunks, currentTime]);
+
+  const visibleWords = currentChunk?.words ?? [];
 
   const highlightSet = useMemo(() => {
     if (!activeScene) return new Set<string>();
@@ -244,6 +265,7 @@ export const VideoPreview = ({
 
       {visibleWords.length > 0 && (
         <div
+          key={currentChunk?.start ?? 0}
           onPointerDown={onSubPointerDown}
           onPointerMove={onSubPointerMove}
           onPointerUp={onSubPointerUp}
