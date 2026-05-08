@@ -77,7 +77,8 @@ export const DEFAULT_CUSTOM_STYLE: SubtitleStyle = {
   paddingY: 8,
   uppercase: false,
   position: "center",
-  maxWords: 2,
+  maxWords: 3,
+  minChunkDuration: 1.2,
 };
 
 export const STYLES: Record<StyleId, MontageStyle> = {
