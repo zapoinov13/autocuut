@@ -210,12 +210,22 @@ export const StylePanel = ({
 
               <div>
                 <div className="flex justify-between items-center">
-                  <Label className="text-xs">Слов на экране</Label>
-                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.maxWords ?? 2}</span>
+                  <Label className="text-xs">Слов во фразе</Label>
+                  <span className="text-xs text-muted-foreground tabular-nums">{activeStyle.maxWords ?? 3}</span>
                 </div>
-                <Slider value={[activeStyle.maxWords ?? 2]} min={1} max={4} step={1} className="mt-2"
+                <Slider value={[activeStyle.maxWords ?? 3]} min={2} max={6} step={1} className="mt-2"
                   onValueChange={(v) => update("maxWords", v[0])} />
-                <p className="text-[10px] text-muted-foreground mt-1.5">💡 1-2 слова = вирусный TikTok-стиль</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5">💡 2-3 = вирусный TikTok • 4-6 = читаемые подкаст-сабы</p>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs">Мин. длительность фразы</Label>
+                  <span className="text-xs text-muted-foreground tabular-nums">{(activeStyle.minChunkDuration ?? 1.2).toFixed(1)}с</span>
+                </div>
+                <Slider value={[activeStyle.minChunkDuration ?? 1.2]} min={0.6} max={2.5} step={0.1} className="mt-2"
+                  onValueChange={(v) => update("minChunkDuration", v[0])} />
+                <p className="text-[10px] text-muted-foreground mt-1.5">💡 Больше = титры листаются медленнее и спокойнее</p>
               </div>
 
               <div>
