@@ -69,8 +69,9 @@ export const ScenesPanel = ({ trigger, scenes, projectId, userId, format }: Prop
       const { error } = await supabase.storage.from("brolls").upload(path, file);
       if (error) throw error;
       const { data: signed } = await supabase.storage.from("brolls").createSignedUrl(path, 60 * 60 * 24 * 30);
-      const column = target === "top" ? "top_video_url" : "broll_url";
-      await supabase.from("scenes").update({ [column]: signed?.signedUrl ?? null }).eq("id", sceneId);
+      const url = signed?.signedUrl ?? null;
+      const patch = target === "top" ? { top_video_url: url } : { broll_url: url };
+      await supabase.from("scenes").update(patch).eq("id", sceneId);
       qc.invalidateQueries({ queryKey: ["editor", projectId] });
       toast.success(target === "top" ? "Верхний клип назначен" : "B-roll загружен");
     } catch (e: any) {
