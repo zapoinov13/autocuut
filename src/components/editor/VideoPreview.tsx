@@ -74,11 +74,11 @@ export const VideoPreview = ({
       out[i].end = Math.max(out[i].end, out[i + 1].start - 0.05);
     }
     return out;
-  }, [words, CHUNK_SIZE]);
+  }, [words, CHUNK_SIZE, MIN_CHUNK_DURATION]);
 
   const currentChunk = useMemo(() => {
     if (!chunks.length) return null;
-    const c = chunks.find((c) => currentTime >= c.start - 0.1 && currentTime < c.end);
+    const c = chunks.find((c) => currentTime >= c.start && currentTime < c.end);
     return c ?? null;
   }, [chunks, currentTime]);
 
