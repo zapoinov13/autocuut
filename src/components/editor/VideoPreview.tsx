@@ -69,9 +69,10 @@ export const VideoPreview = ({
       if (!next || maxedOut || (enoughTime && (punct || gap > 0.35))) flush();
     }
     flush();
-    // Stretch chunk end to next chunk start so caption stays visible during gaps
+    // Only bridge tiny gaps (<150ms) to avoid flicker; otherwise hide caption during pauses
     for (let i = 0; i < out.length - 1; i++) {
-      out[i].end = Math.max(out[i].end, out[i + 1].start - 0.05);
+      const gap = out[i + 1].start - out[i].end;
+      if (gap > 0 && gap < 0.15) out[i].end = out[i + 1].start;
     }
     return out;
   }, [words, CHUNK_SIZE, MIN_CHUNK_DURATION]);
