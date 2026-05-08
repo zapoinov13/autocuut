@@ -82,8 +82,8 @@ export const ScenesPanel = ({ trigger, scenes, projectId, userId, format }: Prop
   };
 
   const clearMedia = async (sceneId: string, target: "top" | "broll") => {
-    const column = target === "top" ? "top_video_url" : "broll_url";
-    await supabase.from("scenes").update({ [column]: null }).eq("id", sceneId);
+    const patch = target === "top" ? { top_video_url: null } : { broll_url: null };
+    await supabase.from("scenes").update(patch).eq("id", sceneId);
     qc.invalidateQueries({ queryKey: ["editor", projectId] });
   };
 
