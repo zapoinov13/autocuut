@@ -265,6 +265,7 @@ export const VideoPreview = ({
 
       {visibleWords.length > 0 && (
         <div
+          key={currentChunk?.start ?? 0}
           onPointerDown={onSubPointerDown}
           onPointerMove={onSubPointerMove}
           onPointerUp={onSubPointerUp}
