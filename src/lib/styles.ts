@@ -47,7 +47,8 @@ export interface SubtitleStyle {
   paddingY?: number; // px vertical subtitle background padding
   uppercase: boolean;
   position: SubtitlePosition;
-  maxWords?: number; // 1-3 words on screen at a time (default 2)
+  maxWords?: number; // max words per chunk on screen (default 3)
+  minChunkDuration?: number; // seconds — minimum time a chunk stays visible (default 1.2)
 }
 
 export interface MontageStyle {
@@ -76,7 +77,8 @@ export const DEFAULT_CUSTOM_STYLE: SubtitleStyle = {
   paddingY: 8,
   uppercase: false,
   position: "center",
-  maxWords: 2,
+  maxWords: 3,
+  minChunkDuration: 1.2,
 };
 
 export const STYLES: Record<StyleId, MontageStyle> = {
