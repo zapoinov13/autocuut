@@ -44,7 +44,7 @@ export const VideoPreview = ({
 
   // Group words into stable phrase-chunks (CapCut/Submagic style)
   const CHUNK_SIZE = Math.max(1, (sub as any).maxWords ?? 3);
-  const MIN_CHUNK_DURATION = 1.0; // seconds — minimum time a chunk stays visible
+  const MIN_CHUNK_DURATION = Math.max(0.3, (sub as any).minChunkDuration ?? 1.2);
   const MAX_CHUNK_CHARS = 36;
 
   const chunks = useMemo(() => {
