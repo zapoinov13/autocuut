@@ -52,9 +52,11 @@ function buildBlocks(scenes: SceneRow[]): Block[] {
 }
 
 interface AIDecision {
-  index: number;
+  index?: number;
+  i?: number;
   use: boolean;
-  query: string; // English keywords for Pexels
+  query: string;
+  reason?: string;
 }
 
 async function aiPickBrolls(blocks: Block[], apiKey: string): Promise<AIDecision[]> {
