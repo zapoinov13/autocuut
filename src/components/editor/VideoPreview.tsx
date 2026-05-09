@@ -103,13 +103,15 @@ export const VideoPreview = ({
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
-  // Sync top video and music with main video
+  // Sync top/broll videos and music with main video
   useEffect(() => {
     const top = topVideoRef.current;
+    const broll = brollVideoRef.current;
     const music = musicRef.current;
     if (top) { playing ? top.play().catch(() => {}) : top.pause(); }
+    if (broll) { playing ? broll.play().catch(() => {}) : broll.pause(); }
     if (music) { playing ? music.play().catch(() => {}) : music.pause(); }
-  }, [playing, activeScene?.top_video_url, musicUrl]);
+  }, [playing, activeScene?.top_video_url, activeScene?.broll_url, musicUrl]);
 
   useEffect(() => {
     const music = musicRef.current;
