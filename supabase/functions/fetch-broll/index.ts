@@ -205,35 +205,77 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5) Pexels + проставить URL на ВСЕ сцены блока
+    // 5) Pexels + проставить URL на ВСЕ сцены блока + собрать отчёт
+    type DecisionOut = {
+      i: number;
+      start: number;
+      end: number;
+      seconds: number;
+      text: string;
+      use: boolean;
+      query: string;
+      reason: string;
+      broll_url: string | null;
+      status: "applied" | "skipped_ai" | "skipped_adjacent" | "no_pexels_match";
+    };
+    const report: DecisionOut[] = [];
     let updated = 0;
     let appliedScenes = 0;
+
     for (let i = 0; i < blocks.length; i++) {
-      if (!usedIdx.has(i)) continue;
-      const pick = picks.find((p) => p.i === i);
-      if (!pick) continue;
+      const pick = picks.find((p) => (p.i ?? p.index) === i);
+      const b = blocks[i];
+      const base = {
+        i,
+        start: b.start,
+        end: b.end,
+        seconds: Math.round(b.end - b.start),
+        text: b.text,
+        query: pick?.query ?? "",
+        reason: pick?.reason ?? "",
+      };
+
+      if (!pick?.use) {
+        report.push({ ...base, use: false, broll_url: null, status: "skipped_ai" });
+        continue;
+      }
+      if (!usedIdx.has(i)) {
+        report.push({ ...base, use: false, broll_url: null, status: "skipped_adjacent",
+          reason: pick.reason || "Соседний блок уже с B-roll" });
+        continue;
+      }
       try {
         const url = await pexelsSearch(pick.query, PEXELS_API_KEY, orientation);
-        if (!url) continue;
-        const ids = blocks[i].scenes.map((s) => s.id);
+        if (!url) {
+          report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
+          continue;
+        }
+        const ids = b.scenes.map((s) => s.id);
         const { error: updErr } = await admin
           .from("scenes")
           .update({ [target]: url })
           .in("id", ids);
-        if (updErr) { console.error(updErr); continue; }
+        if (updErr) {
+          console.error(updErr);
+          report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
+          continue;
+        }
         updated++;
         appliedScenes += ids.length;
+        report.push({ ...base, use: true, broll_url: url, status: "applied" });
       } catch (e) {
         console.error("Pexels error block", i, e);
+        report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
       }
     }
 
     return new Response(
       JSON.stringify({
-        updated,                    // сколько B-roll клипов выбрано
-        applied_scenes: appliedScenes, // сколько сцен покрыто
+        updated,
+        applied_scenes: appliedScenes,
         total_blocks: blocks.length,
         total_scenes: scenes.length,
+        decisions: report,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
