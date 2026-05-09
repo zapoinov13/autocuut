@@ -52,9 +52,11 @@ function buildBlocks(scenes: SceneRow[]): Block[] {
 }
 
 interface AIDecision {
-  index: number;
+  index?: number;
+  i?: number;
   use: boolean;
-  query: string; // English keywords for Pexels
+  query: string;
+  reason?: string;
 }
 
 async function aiPickBrolls(blocks: Block[], apiKey: string): Promise<AIDecision[]> {
@@ -70,8 +72,9 @@ Rules:
 - Pick B-roll ONLY when there is a concrete visual concept the viewer benefits from seeing (a place, object, action, person doing X, data, scene).
 - Aim to cover ~40-60% of blocks, NEVER all of them.
 - Two consecutive blocks should rarely both have B-roll — let the speaker breathe.
-- Query MUST be 1-3 simple English nouns/verbs that Pexels stock library would match (e.g. "doctor patient consultation", "empty waiting room", "team meeting office", "money cash counting"). No abstract words.
-Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string}, ...]} for every block.`;
+- Query MUST be 1-3 simple English nouns/verbs Pexels stock library matches (e.g. "doctor patient consultation"). No abstract words.
+- Reason MUST be in Russian, ONE short sentence (max 10 words) explaining your choice.
+Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string,"reason":string}, ...]} for every block.`;
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -202,35 +205,77 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5) Pexels + проставить URL на ВСЕ сцены блока
+    // 5) Pexels + проставить URL на ВСЕ сцены блока + собрать отчёт
+    type DecisionOut = {
+      i: number;
+      start: number;
+      end: number;
+      seconds: number;
+      text: string;
+      use: boolean;
+      query: string;
+      reason: string;
+      broll_url: string | null;
+      status: "applied" | "skipped_ai" | "skipped_adjacent" | "no_pexels_match";
+    };
+    const report: DecisionOut[] = [];
     let updated = 0;
     let appliedScenes = 0;
+
     for (let i = 0; i < blocks.length; i++) {
-      if (!usedIdx.has(i)) continue;
-      const pick = picks.find((p) => p.i === i);
-      if (!pick) continue;
+      const pick = picks.find((p) => (p.i ?? p.index) === i);
+      const b = blocks[i];
+      const base = {
+        i,
+        start: b.start,
+        end: b.end,
+        seconds: Math.round(b.end - b.start),
+        text: b.text,
+        query: pick?.query ?? "",
+        reason: pick?.reason ?? "",
+      };
+
+      if (!pick?.use) {
+        report.push({ ...base, use: false, broll_url: null, status: "skipped_ai" });
+        continue;
+      }
+      if (!usedIdx.has(i)) {
+        report.push({ ...base, use: false, broll_url: null, status: "skipped_adjacent",
+          reason: pick.reason || "Соседний блок уже с B-roll" });
+        continue;
+      }
       try {
         const url = await pexelsSearch(pick.query, PEXELS_API_KEY, orientation);
-        if (!url) continue;
-        const ids = blocks[i].scenes.map((s) => s.id);
+        if (!url) {
+          report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
+          continue;
+        }
+        const ids = b.scenes.map((s) => s.id);
         const { error: updErr } = await admin
           .from("scenes")
           .update({ [target]: url })
           .in("id", ids);
-        if (updErr) { console.error(updErr); continue; }
+        if (updErr) {
+          console.error(updErr);
+          report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
+          continue;
+        }
         updated++;
         appliedScenes += ids.length;
+        report.push({ ...base, use: true, broll_url: url, status: "applied" });
       } catch (e) {
         console.error("Pexels error block", i, e);
+        report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
       }
     }
 
     return new Response(
       JSON.stringify({
-        updated,                    // сколько B-roll клипов выбрано
-        applied_scenes: appliedScenes, // сколько сцен покрыто
+        updated,
+        applied_scenes: appliedScenes,
         total_blocks: blocks.length,
         total_scenes: scenes.length,
+        decisions: report,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
