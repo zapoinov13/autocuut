@@ -29,6 +29,7 @@ export const VideoPreview = ({
 }: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const topVideoRef = useRef<HTMLVideoElement>(null);
+  const brollVideoRef = useRef<HTMLVideoElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -102,13 +103,15 @@ export const VideoPreview = ({
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
-  // Sync top video and music with main video
+  // Sync top/broll videos and music with main video
   useEffect(() => {
     const top = topVideoRef.current;
+    const broll = brollVideoRef.current;
     const music = musicRef.current;
     if (top) { playing ? top.play().catch(() => {}) : top.pause(); }
+    if (broll) { playing ? broll.play().catch(() => {}) : broll.pause(); }
     if (music) { playing ? music.play().catch(() => {}) : music.pause(); }
-  }, [playing, activeScene?.top_video_url, musicUrl]);
+  }, [playing, activeScene?.top_video_url, activeScene?.broll_url, musicUrl]);
 
   useEffect(() => {
     const music = musicRef.current;
@@ -247,6 +250,20 @@ export const VideoPreview = ({
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onClick={togglePlay}
           playsInline
+        />
+      )}
+
+      {/* B-roll overlay — covers main speaker video while active */}
+      {activeScene?.broll_url && (
+        <video
+          key={activeScene.id + activeScene.broll_url}
+          ref={brollVideoRef}
+          src={activeScene.broll_url}
+          className={`absolute ${isSplit ? "inset-x-0 bottom-0 h-1/2" : "inset-0 h-full"} w-full object-cover z-[5] pointer-events-none`}
+          loop
+          muted
+          playsInline
+          autoPlay
         />
       )}
 
