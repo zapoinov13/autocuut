@@ -253,6 +253,20 @@ export const VideoPreview = ({
         />
       )}
 
+      {/* B-roll overlay — covers main speaker video while active */}
+      {activeScene?.broll_url && (
+        <video
+          key={activeScene.id + activeScene.broll_url}
+          ref={brollVideoRef}
+          src={activeScene.broll_url}
+          className={`absolute ${isSplit ? "inset-x-0 bottom-0 h-1/2" : "inset-0 h-full"} w-full object-cover z-[5] pointer-events-none`}
+          loop
+          muted
+          playsInline
+          autoPlay
+        />
+      )}
+
       {musicUrl && <audio ref={musicRef} src={musicUrl} loop />}
 
       {!playing && (
