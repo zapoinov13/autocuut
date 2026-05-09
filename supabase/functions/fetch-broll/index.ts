@@ -70,8 +70,9 @@ Rules:
 - Pick B-roll ONLY when there is a concrete visual concept the viewer benefits from seeing (a place, object, action, person doing X, data, scene).
 - Aim to cover ~40-60% of blocks, NEVER all of them.
 - Two consecutive blocks should rarely both have B-roll — let the speaker breathe.
-- Query MUST be 1-3 simple English nouns/verbs that Pexels stock library would match (e.g. "doctor patient consultation", "empty waiting room", "team meeting office", "money cash counting"). No abstract words.
-Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string}, ...]} for every block.`;
+- Query MUST be 1-3 simple English nouns/verbs Pexels stock library matches (e.g. "doctor patient consultation"). No abstract words.
+- Reason MUST be in Russian, ONE short sentence (max 10 words) explaining your choice.
+Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string,"reason":string}, ...]} for every block.`;
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
