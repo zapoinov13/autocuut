@@ -1,5 +1,6 @@
-// AI-driven B-roll: groups scenes into 5–8s blocks, asks LLM which need visual support
-// and what to search on Pexels. Same clip spans all scenes in a block (no flicker).
+// AI-driven B-roll: groups scenes into 5–9s blocks with topic context,
+// asks LLM for primary + 2 fallback Pexels queries per relevant block,
+// fetches a clip whose duration covers the whole block (no flicker).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -8,8 +9,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MIN_BLOCK_SEC = 5;   // не короче 5с — клип не должен "мигать"
-const MAX_BLOCK_SEC = 9;   // и не дольше 9с — иначе скучно
+const MIN_BLOCK_SEC = 5;
+const MAX_BLOCK_SEC = 9;
 
 interface SceneRow {
   id: string;
@@ -52,29 +53,34 @@ function buildBlocks(scenes: SceneRow[]): Block[] {
 }
 
 interface AIDecision {
-  index?: number;
-  i?: number;
+  i: number;
   use: boolean;
-  query: string;
-  reason?: string;
+  queries: string[]; // primary + fallbacks
+  reason: string;
 }
 
-async function aiPickBrolls(blocks: Block[], apiKey: string): Promise<AIDecision[]> {
+async function aiPickBrolls(blocks: Block[], topic: string, apiKey: string): Promise<AIDecision[]> {
   const payload = blocks.map((b, i) => ({
     i,
     seconds: Math.round(b.end - b.start),
     text: b.text,
   }));
 
-  const sys = `You are a video editor choosing B-roll for a talking-head video.
-Rules:
-- Skip blocks that are introductions, calls-to-action, transitions, abstract opinions, generic filler.
-- Pick B-roll ONLY when there is a concrete visual concept the viewer benefits from seeing (a place, object, action, person doing X, data, scene).
+  const sys = `You are a senior video editor choosing B-roll for a talking-head short video.
+
+VIDEO TOPIC / CONTEXT:
+"""${topic}"""
+
+RULES:
+- Skip blocks that are intros, calls-to-action, transitions, abstract opinions, generic filler.
+- Pick B-roll ONLY when there is a CONCRETE visual concept the viewer benefits from seeing (a place, object, action, person doing X, data, scene).
+- The query MUST be concretely tied to BOTH the block text AND the overall video topic above. Generic stock ideas like "people talking", "city", "abstract" are forbidden.
 - Aim to cover ~40-60% of blocks, NEVER all of them.
 - Two consecutive blocks should rarely both have B-roll — let the speaker breathe.
-- Query MUST be 1-3 simple English nouns/verbs Pexels stock library matches (e.g. "doctor patient consultation"). No abstract words.
-- Reason MUST be in Russian, ONE short sentence (max 10 words) explaining your choice.
-Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string,"reason":string}, ...]} for every block.`;
+- For each chosen block, return THREE queries: a precise primary (3-5 English words) + two simpler fallbacks (1-3 English words each), all Pexels-friendly stock concepts.
+- Reason MUST be in Russian, ONE short sentence (max 12 words) explaining why this visual fits the topic.
+
+Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"queries":[string,string,string],"reason":string}, ...]} for EVERY block.`;
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -97,19 +103,46 @@ Return ONLY JSON: {"picks":[{"i":number,"use":boolean,"query":string,"reason":st
   const cleaned = raw.replace(/```json|```/g, "").trim();
   let parsed: any = {};
   try { parsed = JSON.parse(cleaned); } catch { parsed = {}; }
-  const picks: AIDecision[] = Array.isArray(parsed.picks) ? parsed.picks : [];
+  const picks: AIDecision[] = (Array.isArray(parsed.picks) ? parsed.picks : []).map((p: any) => ({
+    i: p.i ?? p.index ?? 0,
+    use: !!p.use,
+    queries: Array.isArray(p.queries) ? p.queries.filter(Boolean) : (p.query ? [p.query] : []),
+    reason: p.reason ?? "",
+  }));
   return picks;
 }
 
-async function pexelsSearch(query: string, key: string, orientation: "portrait" | "landscape"): Promise<string | null> {
-  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=5&orientation=${orientation}`;
+async function pexelsSearchOne(
+  query: string,
+  key: string,
+  orientation: "portrait" | "landscape",
+  minDuration: number,
+): Promise<string | null> {
+  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}&min_duration=${Math.max(2, Math.floor(minDuration))}`;
   const res = await fetch(url, { headers: { Authorization: key } });
   if (!res.ok) return null;
   const json = await res.json();
-  const video = json?.videos?.[0];
-  if (!video) return null;
-  const file = video.video_files?.find((f: any) => f.quality === "hd") ?? video.video_files?.[0];
-  return file?.link ?? null;
+  const videos = json?.videos ?? [];
+  // pick the first video that's long enough; prefer HD file
+  for (const v of videos) {
+    if (v.duration && v.duration < minDuration) continue;
+    const file = v.video_files?.find((f: any) => f.quality === "hd") ?? v.video_files?.[0];
+    if (file?.link) return file.link;
+  }
+  return null;
+}
+
+async function pexelsFindFirst(
+  queries: string[],
+  key: string,
+  orientation: "portrait" | "landscape",
+  minDuration: number,
+): Promise<{ url: string; query: string } | null> {
+  for (const q of queries) {
+    const url = await pexelsSearchOne(q, key, orientation, minDuration);
+    if (url) return { url, query: q };
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -122,13 +155,8 @@ Deno.serve(async (req) => {
     const ANON = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    if (!PEXELS_API_KEY) {
-      return new Response(JSON.stringify({ error: "PEXELS_API_KEY не настроен" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY не настроен" }), {
+    if (!PEXELS_API_KEY || !LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "Не настроены ключи" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -140,9 +168,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userClient = createClient(SUPABASE_URL, ANON, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "Не авторизован" }), {
@@ -163,12 +189,11 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const { data: scenes, error: scErr } = await admin
-      .from("scenes")
-      .select("id, text, start_time, end_time, is_hook, highlight_words, order_index")
-      .eq("project_id", projectId)
-      .eq("user_id", user.id)
-      .order("order_index");
+    const [{ data: project }, { data: scenes, error: scErr }] = await Promise.all([
+      admin.from("projects").select("title, title_suggestion").eq("id", projectId).eq("user_id", user.id).maybeSingle(),
+      admin.from("scenes").select("id, text, start_time, end_time, is_hook, highlight_words, order_index")
+        .eq("project_id", projectId).eq("user_id", user.id).order("order_index"),
+    ]);
 
     if (scErr) throw scErr;
     if (!scenes?.length) {
@@ -177,42 +202,49 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1) очистить старые broll'ы — чтобы не было миксовки
-    await admin.from("scenes").update({ [target]: null }).eq("project_id", projectId).eq("user_id", user.id);
+    // Build context: project title + first 2 scenes
+    const topic = [
+      project?.title_suggestion ?? project?.title ?? "",
+      (scenes as SceneRow[]).slice(0, 2).map((s) => s.text).join(" "),
+    ].filter(Boolean).join(" — ");
 
-    // 2) разбить на блоки 5–9с
+    // Wipe previous broll for this target + meta
+    const wipe: any = { [target]: null };
+    if (target === "broll_url") wipe.broll_meta = null;
+    await admin.from("scenes").update(wipe).eq("project_id", projectId).eq("user_id", user.id);
+
     const blocks = buildBlocks(scenes as SceneRow[]);
 
-    // 3) AI решает, где нужен b-roll и какой запрос
     let picks: AIDecision[] = [];
     try {
-      picks = await aiPickBrolls(blocks, LOVABLE_API_KEY);
+      picks = await aiPickBrolls(blocks, topic, LOVABLE_API_KEY);
     } catch (e) {
-      console.error("AI failed, abort:", e);
+      console.error("AI failed:", e);
       return new Response(JSON.stringify({ error: "AI выбор не удался" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 4) запрет двух подряд b-roll блоков
-    const usedIdx = new Set<number>();
+    // Forbid two B-roll blocks in a row
+    const allowedIdx = new Set<number>();
     const sorted = [...picks].sort((a, b) => a.i - b.i);
     let prevUsed = -2;
     for (const p of sorted) {
-      if (p.use && p.query && p.i - prevUsed >= 2) {
-        usedIdx.add(p.i);
+      if (p.use && p.queries.length && p.i - prevUsed >= 2) {
+        allowedIdx.add(p.i);
         prevUsed = p.i;
       }
     }
 
-    // 5) Pexels + проставить URL на ВСЕ сцены блока + собрать отчёт
     type DecisionOut = {
+      block_id: string;
       i: number;
       start: number;
       end: number;
       seconds: number;
       text: string;
       use: boolean;
+      queries: string[];
       query: string;
       reason: string;
       broll_url: string | null;
@@ -223,38 +255,47 @@ Deno.serve(async (req) => {
     let appliedScenes = 0;
 
     for (let i = 0; i < blocks.length; i++) {
-      const pick = picks.find((p) => (p.i ?? p.index) === i);
+      const pick = picks.find((p) => p.i === i);
       const b = blocks[i];
+      const block_id = `${projectId}-b${i}`;
+      const seconds = Math.round(b.end - b.start);
       const base = {
+        block_id,
         i,
         start: b.start,
         end: b.end,
-        seconds: Math.round(b.end - b.start),
+        seconds,
         text: b.text,
-        query: pick?.query ?? "",
+        queries: pick?.queries ?? [],
+        query: pick?.queries?.[0] ?? "",
         reason: pick?.reason ?? "",
       };
 
-      if (!pick?.use) {
+      if (!pick?.use || !pick.queries.length) {
         report.push({ ...base, use: false, broll_url: null, status: "skipped_ai" });
         continue;
       }
-      if (!usedIdx.has(i)) {
+      if (!allowedIdx.has(i)) {
         report.push({ ...base, use: false, broll_url: null, status: "skipped_adjacent",
           reason: pick.reason || "Соседний блок уже с B-roll" });
         continue;
       }
       try {
-        const url = await pexelsSearch(pick.query, PEXELS_API_KEY, orientation);
-        if (!url) {
+        const found = await pexelsFindFirst(pick.queries, PEXELS_API_KEY, orientation, seconds);
+        if (!found) {
           report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
           continue;
         }
         const ids = b.scenes.map((s) => s.id);
-        const { error: updErr } = await admin
-          .from("scenes")
-          .update({ [target]: url })
-          .in("id", ids);
+        const meta = {
+          block_id,
+          query: found.query,
+          queries: pick.queries,
+          reason: pick.reason,
+        };
+        const update: any = { [target]: found.url };
+        if (target === "broll_url") update.broll_meta = meta;
+        const { error: updErr } = await admin.from("scenes").update(update).in("id", ids);
         if (updErr) {
           console.error(updErr);
           report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });
@@ -262,7 +303,7 @@ Deno.serve(async (req) => {
         }
         updated++;
         appliedScenes += ids.length;
-        report.push({ ...base, use: true, broll_url: url, status: "applied" });
+        report.push({ ...base, use: true, broll_url: found.url, query: found.query, status: "applied" });
       } catch (e) {
         console.error("Pexels error block", i, e);
         report.push({ ...base, use: true, broll_url: null, status: "no_pexels_match" });

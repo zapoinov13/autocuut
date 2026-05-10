@@ -160,6 +160,7 @@ export type Database = {
       }
       scenes: {
         Row: {
+          broll_meta: Json | null
           broll_url: string | null
           created_at: string
           end_time: number
@@ -175,6 +176,7 @@ export type Database = {
           zoom: string
         }
         Insert: {
+          broll_meta?: Json | null
           broll_url?: string | null
           created_at?: string
           end_time: number
@@ -190,6 +192,7 @@ export type Database = {
           zoom?: string
         }
         Update: {
+          broll_meta?: Json | null
           broll_url?: string | null
           created_at?: string
           end_time?: number

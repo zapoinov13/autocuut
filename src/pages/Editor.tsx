@@ -241,7 +241,7 @@ const Editor = () => {
           <div className="space-y-2">
             <ToolBigButton icon={ZoomIn} label="AI Auto Zooms" desc="Зум на ключевых моментах"
               onClick={() => toast.info("AI Авто-зумы запущены", { description: "Сцены будут обновлены через минуту" })} />
-            <BrollPanel projectId={project.id} userId={user.id} format={format}
+            <BrollPanel projectId={project.id} userId={user.id} format={format} scenes={scenes as any}
               trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Pexels стоковые вставки" />} />
             <MusicPanel projectId={project.id} userId={user.id}
               musicUrl={project.music_url as any} musicVolume={project.music_volume ?? 20}
