@@ -9,6 +9,7 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
+import UploadMontage from "./pages/UploadMontage";
 import Processing from "./pages/Processing";
 import Editor from "./pages/Editor";
 import NotFound from "./pages/NotFound.tsx";
