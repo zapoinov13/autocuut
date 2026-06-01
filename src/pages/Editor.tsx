@@ -214,9 +214,13 @@ const Editor = () => {
           </div>
         </Card>
 
-        {/* CENTER — Video preview */}
+        {/* CENTER — Video preview or Timeline (montage) */}
         <div className="flex items-center justify-center min-h-0 overflow-hidden">
-          {videoUrl ? (
+          {(project as any).kind === "montage" ? (
+            <div className="w-full h-full overflow-y-auto">
+              <TimelinePanel projectId={project.id} audioPath={(project as any).audio_path ?? null} />
+            </div>
+          ) : videoUrl ? (
             <VideoPreview
               videoUrl={videoUrl}
               subtitleStyle={effectiveStyle}
