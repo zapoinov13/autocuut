@@ -53,6 +53,95 @@ export type Database = {
         }
         Relationships: []
       }
+      montage_clips: {
+        Row: {
+          created_at: string
+          duration: number
+          id: string
+          meta: Json | null
+          order_index: number
+          project_id: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration?: number
+          id?: string
+          meta?: Json | null
+          order_index?: number
+          project_id: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration?: number
+          id?: string
+          meta?: Json | null
+          order_index?: number
+          project_id?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      montage_segments: {
+        Row: {
+          audio_end: number
+          audio_start: number
+          clip_id: string | null
+          clip_in: number
+          clip_out: number
+          created_at: string
+          id: string
+          locked: boolean
+          order_index: number
+          project_id: string
+          reason: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_end?: number
+          audio_start?: number
+          clip_id?: string | null
+          clip_in?: number
+          clip_out?: number
+          created_at?: string
+          id?: string
+          locked?: boolean
+          order_index?: number
+          project_id: string
+          reason?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_end?: number
+          audio_start?: number
+          clip_id?: string | null
+          clip_in?: number
+          clip_out?: number
+          created_at?: string
+          id?: string
+          locked?: boolean
+          order_index?: number
+          project_id?: string
+          reason?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "montage_segments_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "montage_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -79,6 +168,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          audio_path: string | null
           captions_enabled: boolean
           clean_audio: boolean
           created_at: string
@@ -87,6 +177,7 @@ export type Database = {
           export_quality: string
           format: string
           id: string
+          kind: string
           music_url: string | null
           music_volume: number
           status: Database["public"]["Enums"]["project_status"]
@@ -105,6 +196,7 @@ export type Database = {
           viral_score: number | null
         }
         Insert: {
+          audio_path?: string | null
           captions_enabled?: boolean
           clean_audio?: boolean
           created_at?: string
@@ -113,6 +205,7 @@ export type Database = {
           export_quality?: string
           format?: string
           id?: string
+          kind?: string
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
@@ -131,6 +224,7 @@ export type Database = {
           viral_score?: number | null
         }
         Update: {
+          audio_path?: string | null
           captions_enabled?: boolean
           clean_audio?: boolean
           created_at?: string
@@ -139,6 +233,7 @@ export type Database = {
           export_quality?: string
           format?: string
           id?: string
+          kind?: string
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
