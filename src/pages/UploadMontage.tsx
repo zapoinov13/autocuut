@@ -282,7 +282,7 @@ const UploadMontage = () => {
                 className={cn("p-4 rounded-xl border-2 transition-smooth bg-gradient-card text-left",
                   format === f.id ? "border-primary shadow-glow" : "border-border hover:border-primary/40")}>
                 <p className="font-semibold text-sm">{f.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{f.description ?? f.id}</p>
+                <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
               </button>
             ))}
           </div>
