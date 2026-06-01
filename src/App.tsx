@@ -9,6 +9,7 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
+import UploadMontage from "./pages/UploadMontage";
 import Processing from "./pages/Processing";
 import Editor from "./pages/Editor";
 import NotFound from "./pages/NotFound.tsx";
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+            <Route path="/upload/montage" element={<ProtectedRoute><UploadMontage /></ProtectedRoute>} />
             <Route path="/processing/:id" element={<ProtectedRoute><Processing /></ProtectedRoute>} />
             <Route path="/editor/:id" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

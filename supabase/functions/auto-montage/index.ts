@@ -1,0 +1,332 @@
+// AI auto-montage: transcribe audio → chunk into blocks → analyze clips with Vision → ask Gemini to lay out segments.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const LOVABLE_AI = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+interface Word { text: string; start: number; end: number; type?: string }
+interface Block { idx: number; start: number; end: number; text: string }
+interface ClipMeta { id: string; idx: number; duration: number; description: string }
+
+const fail = async (admin: any, id: string | null, msg: string) => {
+  if (admin && id) await admin.from("projects").update({ status: "failed", error_message: msg }).eq("id", id);
+};
+
+const buildSpeechBlocks = (words: Word[], totalDur: number): Block[] => {
+  if (!words.length) return uniformBlocks(totalDur);
+  const blocks: Block[] = [];
+  let buf: Word[] = [];
+  const flush = () => {
+    if (!buf.length) return;
+    blocks.push({
+      idx: blocks.length,
+      start: buf[0].start,
+      end: buf[buf.length - 1].end,
+      text: buf.map((w) => w.text).join(" "),
+    });
+    buf = [];
+  };
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    buf.push(w);
+    const dur = buf[buf.length - 1].end - buf[0].start;
+    const next = words[i + 1];
+    const gap = next ? next.start - w.end : 0;
+    const punct = /[.!?…]$/.test(w.text);
+    if (!next) { flush(); break; }
+    if (dur >= 3 && (punct || gap > 0.5)) flush();
+    else if (dur >= 8) flush();
+  }
+  flush();
+  return blocks;
+};
+
+const uniformBlocks = (totalDur: number): Block[] => {
+  // music mode: 4s chunks
+  const out: Block[] = [];
+  const chunk = 4;
+  let t = 0; let i = 0;
+  while (t < totalDur - 0.2) {
+    const end = Math.min(totalDur, t + chunk);
+    out.push({ idx: i, start: t, end, text: `[music ${i + 1}]` });
+    t = end; i++;
+  }
+  return out;
+};
+
+async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<string[]> {
+  // Send all thumbnails in one Gemini Vision call to save quota
+  const content: any[] = [{
+    type: "text",
+    text: `Опиши каждое изображение одной короткой фразой по-русски (5-10 слов): что в кадре, действие, обстановка. Ответ строго JSON-массивом строк в порядке изображений, без markdown.`,
+  }];
+  for (const b64 of thumbsB64) {
+    content.push({ type: "image_url", image_url: { url: b64 } });
+  }
+  const res = await fetch(LOVABLE_AI, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [{ role: "user", content }],
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    console.error("vision error", res.status, t.slice(0, 300));
+    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+  }
+  const j = await res.json();
+  const txt = j.choices?.[0]?.message?.content ?? "[]";
+  try {
+    const parsed = JSON.parse(txt);
+    if (Array.isArray(parsed)) return parsed.map(String);
+    if (Array.isArray(parsed.descriptions)) return parsed.descriptions.map(String);
+    if (Array.isArray(parsed.clips)) return parsed.clips.map(String);
+    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+  } catch {
+    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+  }
+}
+
+async function layoutSegments(
+  blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
+): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
+  const sys = mode === "speech"
+    ? `Ты режиссёр монтажа. На вход — блоки голоса (с текстом и таймкодами) и список клипов с описаниями.
+Задача: к каждому блоку подобрать клип, который ВИЗУАЛЬНО подходит по СМЫСЛУ к тексту блока.
+Правила:
+- Длительность сегмента = длительность блока.
+- Если клип короче блока — всё равно используй его (зациклится в превью).
+- Если клип длиннее — выбери осмысленный отрезок (clip_in/clip_out).
+- Не ставь один и тот же клип в двух подряд идущих блоках.
+- Старайся использовать как можно больше разных клипов.
+- reason — короткая фраза по-русски почему именно этот клип сюда (по смыслу).`
+    : `Ты режиссёр клипов под музыку. На вход — равные 4-секундные блоки музыки и список клипов.
+Задача: разнообразно разложить клипы по блокам, чередуя их для динамики.
+Правила:
+- Длительность сегмента = длительность блока.
+- Не повторять клип в двух подряд блоках.
+- Использовать все клипы хотя бы раз.
+- Если клип длиннее блока — взять кусок из середины (clip_in/clip_out).
+- reason — короткая фраза почему такая раскладка.`;
+
+  const user = JSON.stringify({
+    mode,
+    blocks: blocks.map((b) => ({ i: b.idx, dur: +(b.end - b.start).toFixed(2), text: b.text.slice(0, 200) })),
+    clips: clips.map((c) => ({ i: c.idx, dur: +c.duration.toFixed(2), desc: c.description })),
+  });
+
+  const res = await fetch(LOVABLE_AI, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-pro",
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: `${user}\n\nВерни строго JSON:\n{"segments":[{"block_idx":0,"clip_idx":0,"clip_in":0,"clip_out":3.5,"reason":"..."}]}` },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`layout AI: ${res.status} ${t.slice(0, 200)}`);
+  }
+  const j = await res.json();
+  const txt = j.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(txt);
+  const segs = parsed.segments ?? [];
+  if (!Array.isArray(segs) || !segs.length) throw new Error("AI вернул пустую раскладку");
+  return segs;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const ANON = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
+  const ELEVEN = Deno.env.get("ELEVENLABS_API_KEY");
+  const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+  let projectId: string | null = null;
+
+  try {
+    if (!ELEVEN) throw new Error("ELEVENLABS_API_KEY не настроен");
+    if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY не настроен");
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
+    const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
+
+    const { project_id } = await req.json();
+    if (!project_id) throw new Error("project_id required");
+    projectId = project_id;
+
+    const { data: project } = await admin.from("projects").select("*")
+      .eq("id", project_id).eq("user_id", user.id).single();
+    if (!project) throw new Error("Проект не найден");
+    if (!project.audio_path) throw new Error("Аудио не загружено");
+
+    const { data: clipRows } = await admin.from("montage_clips").select("*")
+      .eq("project_id", project_id).order("order_index");
+    if (!clipRows || clipRows.length < 2) throw new Error("Минимум 2 клипа");
+
+    await admin.from("projects").update({ status: "transcribing" }).eq("id", project_id);
+
+    // 1. Audio → ElevenLabs
+    console.log("downloading audio", project.audio_path);
+    const { data: audioSigned } = await admin.storage.from("audio").createSignedUrl(project.audio_path, 3600);
+    const audioRes = await fetch(audioSigned!.signedUrl);
+    const audioBlob = await audioRes.blob();
+
+    const fd = new FormData();
+    fd.append("file", audioBlob, "audio");
+    fd.append("model_id", "scribe_v2");
+    fd.append("tag_audio_events", "false");
+    fd.append("diarize", "false");
+    const scribeRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST", headers: { "xi-api-key": ELEVEN }, body: fd,
+    });
+    if (!scribeRes.ok) {
+      const t = await scribeRes.text();
+      throw new Error(`ElevenLabs: ${t.slice(0, 200)}`);
+    }
+    const transcript = await scribeRes.json();
+    const words: Word[] = (transcript.words ?? []).filter((w: any) => w.type !== "spacing" && w.text?.trim());
+    const totalDur = Number(project.duration) || (words.length ? words[words.length - 1].end : 60);
+
+    // 2. Detect mode
+    const wordsPerSec = words.length / Math.max(totalDur, 1);
+    const mode: "speech" | "music" = wordsPerSec < 0.3 ? "music" : "speech";
+    console.log("mode", mode, "words/sec", wordsPerSec.toFixed(2));
+
+    // Save transcript as subtitles for the project (so editor can show them if needed)
+    if (mode === "speech" && words.length) {
+      await admin.from("subtitles").delete().eq("project_id", project_id);
+      await admin.from("subtitles").insert({
+        project_id, user_id: user.id,
+        words: words.map((w) => ({ text: w.text, start: w.start, end: w.end })),
+      });
+    }
+
+    await admin.from("projects").update({ status: "analyzing" }).eq("id", project_id);
+
+    // 3. Build blocks
+    const blocks = mode === "speech"
+      ? buildSpeechBlocks(words, totalDur)
+      : uniformBlocks(totalDur);
+    console.log("blocks", blocks.length);
+
+    // 4. Describe clips via vision (batch)
+    console.log("describing clips");
+    const thumbB64: string[] = [];
+    for (const c of clipRows) {
+      const thumbPath = (c.meta as any)?.thumb_path;
+      if (!thumbPath) { thumbB64.push(""); continue; }
+      try {
+        const { data: img } = await admin.storage.from("thumbnails").download(thumbPath);
+        if (!img) { thumbB64.push(""); continue; }
+        const buf = new Uint8Array(await img.arrayBuffer());
+        // base64
+        let s = ""; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+        thumbB64.push(`data:image/jpeg;base64,${btoa(s)}`);
+      } catch (e) {
+        console.warn("thumb fail", e); thumbB64.push("");
+      }
+    }
+    const valid = thumbB64.filter(Boolean);
+    let descriptions: string[] = clipRows.map((_, i) => `Клип ${i + 1}`);
+    if (valid.length === clipRows.length) {
+      try {
+        descriptions = await describeClipsBatch(valid, LOVABLE_KEY);
+        if (descriptions.length !== clipRows.length) {
+          // pad/trim
+          descriptions = clipRows.map((_, i) => descriptions[i] ?? `Клип ${i + 1}`);
+        }
+      } catch (e) {
+        console.error("vision failed, using fallback", e);
+      }
+    }
+
+    // Save descriptions back
+    for (let i = 0; i < clipRows.length; i++) {
+      await admin.from("montage_clips").update({
+        meta: { ...(clipRows[i].meta as any ?? {}), description: descriptions[i] },
+      }).eq("id", clipRows[i].id);
+    }
+
+    const clipsMeta: ClipMeta[] = clipRows.map((c, i) => ({
+      id: c.id, idx: i, duration: Number(c.duration), description: descriptions[i],
+    }));
+
+    // 5. Layout
+    console.log("requesting layout");
+    let segs;
+    try {
+      segs = await layoutSegments(blocks, clipsMeta, mode, LOVABLE_KEY);
+    } catch (e) {
+      console.error("layout failed, fallback to round-robin", e);
+      segs = blocks.map((b, i) => {
+        const ci = i % clipsMeta.length;
+        const c = clipsMeta[ci];
+        const dur = b.end - b.start;
+        const clip_in = Math.max(0, Math.min(c.duration - dur, 0));
+        return {
+          block_idx: b.idx, clip_idx: ci, clip_in,
+          clip_out: Math.min(c.duration, clip_in + dur),
+          reason: "Авто-чередование (AI fallback)",
+        };
+      });
+    }
+
+    // 6. Save segments
+    await admin.from("montage_segments").delete().eq("project_id", project_id);
+    const toInsert = segs.map((s: any, i: number) => {
+      const block = blocks[s.block_idx] ?? blocks[i] ?? blocks[blocks.length - 1];
+      const clip = clipsMeta[s.clip_idx] ?? clipsMeta[0];
+      const blockDur = block.end - block.start;
+      let clip_in = Math.max(0, Number(s.clip_in) || 0);
+      let clip_out = Math.min(clip.duration, Number(s.clip_out) || clip_in + blockDur);
+      if (clip_out - clip_in < 0.3) {
+        clip_in = 0;
+        clip_out = Math.min(clip.duration, blockDur);
+      }
+      return {
+        project_id, user_id: user.id,
+        order_index: i,
+        clip_id: clip.id,
+        clip_in, clip_out,
+        audio_start: block.start, audio_end: block.end,
+        reason: String(s.reason ?? "").slice(0, 240),
+      };
+    });
+    if (toInsert.length) {
+      const { error: insErr } = await admin.from("montage_segments").insert(toInsert);
+      if (insErr) throw insErr;
+    }
+
+    await admin.from("projects").update({ status: "ready" }).eq("id", project_id);
+
+    return new Response(JSON.stringify({
+      success: true, mode, blocks: blocks.length, segments: toInsert.length,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("auto-montage error", msg);
+    await fail(admin, projectId, msg);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
