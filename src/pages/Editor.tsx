@@ -16,6 +16,7 @@ import { ScenesPanel } from "@/components/editor/panels/ScenesPanel";
 import { TrimPanel } from "@/components/editor/panels/TrimPanel";
 import { MusicPanel } from "@/components/editor/panels/MusicPanel";
 import { BrollPanel } from "@/components/editor/panels/BrollPanel";
+import { TimelinePanel } from "@/components/editor/panels/TimelinePanel";
 import { ExportDialog } from "@/components/editor/panels/ExportDialog";
 import { FormatPanel, FORMATS, VideoFormat } from "@/components/editor/panels/FormatPanel";
 import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
