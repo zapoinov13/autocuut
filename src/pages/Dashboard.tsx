@@ -121,9 +121,16 @@ const Dashboard = () => {
                 <p className="text-xs text-muted-foreground">Загрузи видео — AI сделает остальное</p>
               </Card>
             </Link>
+            <Link to="/upload/montage">
+              <Card className="p-6 bg-gradient-card border-primary/40 hover:border-primary hover:shadow-glow transition-smooth cursor-pointer h-full">
+                <div className="text-3xl mb-3">🎬</div>
+                <h3 className="font-semibold mb-1">AI Авто-склейка</h3>
+                <p className="text-xs text-muted-foreground">Аудио + нарезки → AI соберёт монтаж по смыслу</p>
+                <Badge className="mt-3 text-[10px] bg-primary/20 text-primary border-0">NEW</Badge>
+              </Card>
+            </Link>
             {[
               { title: "Magic Clips", desc: "Шортсы из длинного видео", emoji: "✂️" },
-              { title: "Combine Videos", desc: "Объединение клипов", emoji: "🎬" },
               { title: "AI Avatar", desc: "Видео с AI-аватаром", emoji: "🤖" },
             ].map((card) => (
               <Card key={card.title} className="p-6 bg-gradient-card border-border/60 opacity-60 cursor-not-allowed h-full">
