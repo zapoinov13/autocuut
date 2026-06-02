@@ -11,7 +11,8 @@ const LOVABLE_AI = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 interface Word { text: string; start: number; end: number; type?: string }
 interface Block { idx: number; start: number; end: number; text: string }
-interface ClipMeta { id: string; idx: number; duration: number; description: string }
+interface ClipScene { description: string; subjects: string[]; setting: string; mood: string; motion: string; tags: string[] }
+interface ClipMeta { id: string; idx: number; duration: number; description: string; scene: ClipScene }
 
 const fail = async (admin: any, id: string | null, msg: string) => {
   if (admin && id) await admin.from("projects").update({ status: "failed", error_message: msg }).eq("id", id);
