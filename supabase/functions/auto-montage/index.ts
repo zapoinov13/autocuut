@@ -60,14 +60,20 @@ const uniformBlocks = (totalDur: number): Block[] => {
   return out;
 };
 
-async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<string[]> {
-  // Send all thumbnails in one Gemini Vision call to save quota
+const emptyScene = (i: number): ClipScene => ({
+  description: `Клип ${i + 1}`, subjects: [], setting: "", mood: "", motion: "", tags: [],
+});
+
+async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<ClipScene[]> {
+  // Ask Gemini Vision for STRUCTURED scene metadata for every clip in one call.
   const content: any[] = [{
     type: "text",
-    text: `Опиши каждое изображение одной короткой фразой по-русски (5-10 слов): что в кадре, действие, обстановка. Ответ строго JSON-массивом строк в порядке изображений, без markdown.`,
+    text: `Проанализируй каждое изображение как сцену из видеоклипа. Для каждого верни строго JSON:
+{"clips":[{"description":"одно предложение по-русски, что происходит","subjects":["человек","ноутбук"],"setting":"офис/улица/природа/студия/дом/...","mood":"энергичный/спокойный/тревожный/радостный/...","motion":"статика/медленное движение/быстрое движение","tags":["работа","технологии","город","..."]}]}
+Порядок clips строго совпадает с порядком изображений. Только валидный JSON без markdown.`,
   }];
   for (const b64 of thumbsB64) {
-    content.push({ type: "image_url", image_url: { url: b64 } });
+    if (b64) content.push({ type: "image_url", image_url: { url: b64 } });
   }
   const res = await fetch(LOVABLE_AI, {
     method: "POST",
@@ -81,19 +87,47 @@ async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<
   if (!res.ok) {
     const t = await res.text();
     console.error("vision error", res.status, t.slice(0, 300));
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    return thumbsB64.map((_, i) => emptyScene(i));
   }
   const j = await res.json();
-  const txt = j.choices?.[0]?.message?.content ?? "[]";
+  const txt = j.choices?.[0]?.message?.content ?? "{}";
   try {
     const parsed = JSON.parse(txt);
-    if (Array.isArray(parsed)) return parsed.map(String);
-    if (Array.isArray(parsed.descriptions)) return parsed.descriptions.map(String);
-    if (Array.isArray(parsed.clips)) return parsed.clips.map(String);
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    const arr = Array.isArray(parsed) ? parsed : (parsed.clips ?? parsed.scenes ?? parsed.descriptions ?? []);
+    return thumbsB64.map((_, i) => {
+      const raw = arr[i];
+      if (!raw) return emptyScene(i);
+      if (typeof raw === "string") return { ...emptyScene(i), description: raw };
+      return {
+        description: String(raw.description ?? `Клип ${i + 1}`),
+        subjects: Array.isArray(raw.subjects) ? raw.subjects.map(String).slice(0, 6) : [],
+        setting: String(raw.setting ?? ""),
+        mood: String(raw.mood ?? ""),
+        motion: String(raw.motion ?? ""),
+        tags: Array.isArray(raw.tags) ? raw.tags.map(String).slice(0, 8) : [],
+      };
+    });
   } catch {
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    return thumbsB64.map((_, i) => emptyScene(i));
   }
+}
+
+// Lightweight Russian-friendly keyword overlap between block text and a clip scene.
+const STOPWORDS = new Set(["и","в","на","не","что","это","как","по","с","для","от","до","но","или","же","бы","ли","за","о","у","к","из","я","ты","он","она","мы","вы","они","меня","тебя","его","её","нас","вас","их","быть","есть","был","была","было","было","эта","этот","эти","там","тут","так","уже","еще","ещё","все","всё","когда","если","чтобы","потому","только","даже","очень","можно","надо","нужно","свой","своя","свои","свое"]);
+const tokenize = (s: string) => (s.toLowerCase().match(/[a-zа-яё0-9]{3,}/gi) ?? [])
+  .map((w) => w.replace(/(ого|его|ому|ему|ыми|ими|ая|яя|ое|ее|ой|ей|ую|юю|ие|ые|ам|ям|ах|ях|ов|ев|ёв|ом|ем|ём|ы|и|у|ю|а|я|о|е|ь)$/i, ""))
+  .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+
+function clipKeywords(c: ClipMeta): Set<string> {
+  const all = [c.scene.description, c.scene.setting, c.scene.mood, c.scene.motion,
+    ...(c.scene.subjects ?? []), ...(c.scene.tags ?? [])].join(" ");
+  return new Set(tokenize(all));
+}
+
+function scoreMatch(blockText: string, clipKw: Set<string>): number {
+  const bt = tokenize(blockText);
+  let s = 0; for (const w of bt) if (clipKw.has(w)) s += 1;
+  return s;
 }
 
 async function layoutSegments(
