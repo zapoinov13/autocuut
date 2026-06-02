@@ -134,28 +134,35 @@ async function layoutSegments(
   blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
 ): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
   const sys = mode === "speech"
-    ? `Ты режиссёр монтажа. На вход — блоки голоса (с текстом и таймкодами) и список клипов с описаниями.
-Задача: к каждому блоку подобрать клип, который ВИЗУАЛЬНО подходит по СМЫСЛУ к тексту блока.
-Правила:
+    ? `Ты режиссёр монтажа. На вход — блоки голоса (текст + длительность) и клипы со структурным описанием сцены (description, subjects, setting, mood, motion, tags).
+ГЛАВНОЕ ПРАВИЛО: к каждому блоку подбирай клип, который СОВПАДАЕТ ПО СМЫСЛУ с текстом блока.
+Алгоритм для каждого блока:
+1) Выдели ключевые понятия из текста (объект, действие, место, настроение).
+2) Найди клип, у которого subjects/tags/setting/description максимально пересекаются с этими понятиями.
+3) Если ни один клип не подходит по смыслу — выбери самый нейтральный (общий план, минимум деталей) и пометь в reason "нейтральная подложка".
+Дополнительные правила:
 - Длительность сегмента = длительность блока.
-- Если клип короче блока — всё равно используй его (зациклится в превью).
-- Если клип длиннее — выбери осмысленный отрезок (clip_in/clip_out).
-- Не ставь один и тот же клип в двух подряд идущих блоках.
+- Не ставь один клип в двух подряд блоках.
 - Старайся использовать как можно больше разных клипов.
-- reason — короткая фраза по-русски почему именно этот клип сюда (по смыслу).`
-    : `Ты режиссёр клипов под музыку. На вход — равные 4-секундные блоки музыки и список клипов.
-Задача: разнообразно разложить клипы по блокам, чередуя их для динамики.
+- Если клип длиннее блока — выбери осмысленный отрезок через clip_in/clip_out.
+- reason ОБЯЗАН содержать конкретные совпавшие слова или понятия (например: "текст про кофе → setting:кафе, tag:напиток").`
+    : `Ты режиссёр клипов под музыку. Блоки — равные 4с куски, клипы — со сценовыми тегами.
 Правила:
 - Длительность сегмента = длительность блока.
-- Не повторять клип в двух подряд блоках.
-- Использовать все клипы хотя бы раз.
-- Если клип длиннее блока — взять кусок из середины (clip_in/clip_out).
-- reason — короткая фраза почему такая раскладка.`;
+- Чередуй клипы по mood/motion для динамики, не повторяй подряд.
+- Используй каждый клип хотя бы раз.
+- Если клип длиннее блока — бери кусок через clip_in/clip_out.
+- reason — короткая фраза о ритме/настроении.`;
 
   const user = JSON.stringify({
     mode,
-    blocks: blocks.map((b) => ({ i: b.idx, dur: +(b.end - b.start).toFixed(2), text: b.text.slice(0, 200) })),
-    clips: clips.map((c) => ({ i: c.idx, dur: +c.duration.toFixed(2), desc: c.description })),
+    blocks: blocks.map((b) => ({ i: b.idx, dur: +(b.end - b.start).toFixed(2), text: b.text.slice(0, 240) })),
+    clips: clips.map((c) => ({
+      i: c.idx, dur: +c.duration.toFixed(2),
+      desc: c.scene.description,
+      subjects: c.scene.subjects, setting: c.scene.setting,
+      mood: c.scene.mood, motion: c.scene.motion, tags: c.scene.tags,
+    })),
   });
 
   const res = await fetch(LOVABLE_AI, {
@@ -180,6 +187,36 @@ async function layoutSegments(
   const segs = parsed.segments ?? [];
   if (!Array.isArray(segs) || !segs.length) throw new Error("AI вернул пустую раскладку");
   return segs;
+}
+
+// Strengthens AI choice with keyword-overlap. If AI picked a clip with score 0
+// but another clip has a clearly better match, swap (speech mode only).
+function reinforceSemanticMatch(
+  segs: { block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[],
+  blocks: Block[], clips: ClipMeta[],
+) {
+  const kw = clips.map(clipKeywords);
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    const block = blocks[s.block_idx]; if (!block) continue;
+    const chosen = s.clip_idx;
+    const chosenScore = scoreMatch(block.text, kw[chosen] ?? new Set());
+    let bestIdx = chosen, bestScore = chosenScore;
+    for (let c = 0; c < clips.length; c++) {
+      if (c === chosen) continue;
+      // avoid repeating same clip as previous segment
+      if (i > 0 && segs[i - 1].clip_idx === c) continue;
+      const sc = scoreMatch(block.text, kw[c] ?? new Set());
+      if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+    }
+    if (bestIdx !== chosen && bestScore >= 2 && chosenScore === 0) {
+      const matched = [...tokenize(block.text)].filter((w) => kw[bestIdx].has(w)).slice(0, 4);
+      segs[i] = {
+        ...s, clip_idx: bestIdx, clip_in: 0, clip_out: 0,
+        reason: `Пост-матч по смыслу: ${matched.join(", ")} (было: «${s.reason ?? ""}»)`,
+      };
+    }
+  }
 }
 
 Deno.serve(async (req) => {
