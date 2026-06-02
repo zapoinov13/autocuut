@@ -11,7 +11,8 @@ const LOVABLE_AI = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 interface Word { text: string; start: number; end: number; type?: string }
 interface Block { idx: number; start: number; end: number; text: string }
-interface ClipMeta { id: string; idx: number; duration: number; description: string }
+interface ClipScene { description: string; subjects: string[]; setting: string; mood: string; motion: string; tags: string[] }
+interface ClipMeta { id: string; idx: number; duration: number; description: string; scene: ClipScene }
 
 const fail = async (admin: any, id: string | null, msg: string) => {
   if (admin && id) await admin.from("projects").update({ status: "failed", error_message: msg }).eq("id", id);
@@ -59,14 +60,20 @@ const uniformBlocks = (totalDur: number): Block[] => {
   return out;
 };
 
-async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<string[]> {
-  // Send all thumbnails in one Gemini Vision call to save quota
+const emptyScene = (i: number): ClipScene => ({
+  description: `Клип ${i + 1}`, subjects: [], setting: "", mood: "", motion: "", tags: [],
+});
+
+async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<ClipScene[]> {
+  // Ask Gemini Vision for STRUCTURED scene metadata for every clip in one call.
   const content: any[] = [{
     type: "text",
-    text: `Опиши каждое изображение одной короткой фразой по-русски (5-10 слов): что в кадре, действие, обстановка. Ответ строго JSON-массивом строк в порядке изображений, без markdown.`,
+    text: `Проанализируй каждое изображение как сцену из видеоклипа. Для каждого верни строго JSON:
+{"clips":[{"description":"одно предложение по-русски, что происходит","subjects":["человек","ноутбук"],"setting":"офис/улица/природа/студия/дом/...","mood":"энергичный/спокойный/тревожный/радостный/...","motion":"статика/медленное движение/быстрое движение","tags":["работа","технологии","город","..."]}]}
+Порядок clips строго совпадает с порядком изображений. Только валидный JSON без markdown.`,
   }];
   for (const b64 of thumbsB64) {
-    content.push({ type: "image_url", image_url: { url: b64 } });
+    if (b64) content.push({ type: "image_url", image_url: { url: b64 } });
   }
   const res = await fetch(LOVABLE_AI, {
     method: "POST",
@@ -80,47 +87,82 @@ async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<
   if (!res.ok) {
     const t = await res.text();
     console.error("vision error", res.status, t.slice(0, 300));
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    return thumbsB64.map((_, i) => emptyScene(i));
   }
   const j = await res.json();
-  const txt = j.choices?.[0]?.message?.content ?? "[]";
+  const txt = j.choices?.[0]?.message?.content ?? "{}";
   try {
     const parsed = JSON.parse(txt);
-    if (Array.isArray(parsed)) return parsed.map(String);
-    if (Array.isArray(parsed.descriptions)) return parsed.descriptions.map(String);
-    if (Array.isArray(parsed.clips)) return parsed.clips.map(String);
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    const arr = Array.isArray(parsed) ? parsed : (parsed.clips ?? parsed.scenes ?? parsed.descriptions ?? []);
+    return thumbsB64.map((_, i) => {
+      const raw = arr[i];
+      if (!raw) return emptyScene(i);
+      if (typeof raw === "string") return { ...emptyScene(i), description: raw };
+      return {
+        description: String(raw.description ?? `Клип ${i + 1}`),
+        subjects: Array.isArray(raw.subjects) ? raw.subjects.map(String).slice(0, 6) : [],
+        setting: String(raw.setting ?? ""),
+        mood: String(raw.mood ?? ""),
+        motion: String(raw.motion ?? ""),
+        tags: Array.isArray(raw.tags) ? raw.tags.map(String).slice(0, 8) : [],
+      };
+    });
   } catch {
-    return thumbsB64.map((_, i) => `Клип ${i + 1}`);
+    return thumbsB64.map((_, i) => emptyScene(i));
   }
+}
+
+// Lightweight Russian-friendly keyword overlap between block text and a clip scene.
+const STOPWORDS = new Set(["и","в","на","не","что","это","как","по","с","для","от","до","но","или","же","бы","ли","за","о","у","к","из","я","ты","он","она","мы","вы","они","меня","тебя","его","её","нас","вас","их","быть","есть","был","была","было","было","эта","этот","эти","там","тут","так","уже","еще","ещё","все","всё","когда","если","чтобы","потому","только","даже","очень","можно","надо","нужно","свой","своя","свои","свое"]);
+const tokenize = (s: string) => (s.toLowerCase().match(/[a-zа-яё0-9]{3,}/gi) ?? [])
+  .map((w) => w.replace(/(ого|его|ому|ему|ыми|ими|ая|яя|ое|ее|ой|ей|ую|юю|ие|ые|ам|ям|ах|ях|ов|ев|ёв|ом|ем|ём|ы|и|у|ю|а|я|о|е|ь)$/i, ""))
+  .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+
+function clipKeywords(c: ClipMeta): Set<string> {
+  const all = [c.scene.description, c.scene.setting, c.scene.mood, c.scene.motion,
+    ...(c.scene.subjects ?? []), ...(c.scene.tags ?? [])].join(" ");
+  return new Set(tokenize(all));
+}
+
+function scoreMatch(blockText: string, clipKw: Set<string>): number {
+  const bt = tokenize(blockText);
+  let s = 0; for (const w of bt) if (clipKw.has(w)) s += 1;
+  return s;
 }
 
 async function layoutSegments(
   blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
 ): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
   const sys = mode === "speech"
-    ? `Ты режиссёр монтажа. На вход — блоки голоса (с текстом и таймкодами) и список клипов с описаниями.
-Задача: к каждому блоку подобрать клип, который ВИЗУАЛЬНО подходит по СМЫСЛУ к тексту блока.
-Правила:
+    ? `Ты режиссёр монтажа. На вход — блоки голоса (текст + длительность) и клипы со структурным описанием сцены (description, subjects, setting, mood, motion, tags).
+ГЛАВНОЕ ПРАВИЛО: к каждому блоку подбирай клип, который СОВПАДАЕТ ПО СМЫСЛУ с текстом блока.
+Алгоритм для каждого блока:
+1) Выдели ключевые понятия из текста (объект, действие, место, настроение).
+2) Найди клип, у которого subjects/tags/setting/description максимально пересекаются с этими понятиями.
+3) Если ни один клип не подходит по смыслу — выбери самый нейтральный (общий план, минимум деталей) и пометь в reason "нейтральная подложка".
+Дополнительные правила:
 - Длительность сегмента = длительность блока.
-- Если клип короче блока — всё равно используй его (зациклится в превью).
-- Если клип длиннее — выбери осмысленный отрезок (clip_in/clip_out).
-- Не ставь один и тот же клип в двух подряд идущих блоках.
+- Не ставь один клип в двух подряд блоках.
 - Старайся использовать как можно больше разных клипов.
-- reason — короткая фраза по-русски почему именно этот клип сюда (по смыслу).`
-    : `Ты режиссёр клипов под музыку. На вход — равные 4-секундные блоки музыки и список клипов.
-Задача: разнообразно разложить клипы по блокам, чередуя их для динамики.
+- Если клип длиннее блока — выбери осмысленный отрезок через clip_in/clip_out.
+- reason ОБЯЗАН содержать конкретные совпавшие слова или понятия (например: "текст про кофе → setting:кафе, tag:напиток").`
+    : `Ты режиссёр клипов под музыку. Блоки — равные 4с куски, клипы — со сценовыми тегами.
 Правила:
 - Длительность сегмента = длительность блока.
-- Не повторять клип в двух подряд блоках.
-- Использовать все клипы хотя бы раз.
-- Если клип длиннее блока — взять кусок из середины (clip_in/clip_out).
-- reason — короткая фраза почему такая раскладка.`;
+- Чередуй клипы по mood/motion для динамики, не повторяй подряд.
+- Используй каждый клип хотя бы раз.
+- Если клип длиннее блока — бери кусок через clip_in/clip_out.
+- reason — короткая фраза о ритме/настроении.`;
 
   const user = JSON.stringify({
     mode,
-    blocks: blocks.map((b) => ({ i: b.idx, dur: +(b.end - b.start).toFixed(2), text: b.text.slice(0, 200) })),
-    clips: clips.map((c) => ({ i: c.idx, dur: +c.duration.toFixed(2), desc: c.description })),
+    blocks: blocks.map((b) => ({ i: b.idx, dur: +(b.end - b.start).toFixed(2), text: b.text.slice(0, 240) })),
+    clips: clips.map((c) => ({
+      i: c.idx, dur: +c.duration.toFixed(2),
+      desc: c.scene.description,
+      subjects: c.scene.subjects, setting: c.scene.setting,
+      mood: c.scene.mood, motion: c.scene.motion, tags: c.scene.tags,
+    })),
   });
 
   const res = await fetch(LOVABLE_AI, {
@@ -145,6 +187,36 @@ async function layoutSegments(
   const segs = parsed.segments ?? [];
   if (!Array.isArray(segs) || !segs.length) throw new Error("AI вернул пустую раскладку");
   return segs;
+}
+
+// Strengthens AI choice with keyword-overlap. If AI picked a clip with score 0
+// but another clip has a clearly better match, swap (speech mode only).
+function reinforceSemanticMatch(
+  segs: { block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[],
+  blocks: Block[], clips: ClipMeta[],
+) {
+  const kw = clips.map(clipKeywords);
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    const block = blocks[s.block_idx]; if (!block) continue;
+    const chosen = s.clip_idx;
+    const chosenScore = scoreMatch(block.text, kw[chosen] ?? new Set());
+    let bestIdx = chosen, bestScore = chosenScore;
+    for (let c = 0; c < clips.length; c++) {
+      if (c === chosen) continue;
+      // avoid repeating same clip as previous segment
+      if (i > 0 && segs[i - 1].clip_idx === c) continue;
+      const sc = scoreMatch(block.text, kw[c] ?? new Set());
+      if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+    }
+    if (bestIdx !== chosen && bestScore >= 2 && chosenScore === 0) {
+      const matched = [...tokenize(block.text)].filter((w) => kw[bestIdx].has(w)).slice(0, 4);
+      segs[i] = {
+        ...s, clip_idx: bestIdx, clip_in: 0, clip_out: 0,
+        reason: `Пост-матч по смыслу: ${matched.join(", ")} (было: «${s.reason ?? ""}»)`,
+      };
+    }
+  }
 }
 
 Deno.serve(async (req) => {
@@ -246,49 +318,62 @@ Deno.serve(async (req) => {
       }
     }
     const valid = thumbB64.filter(Boolean);
-    let descriptions: string[] = clipRows.map((_, i) => `Клип ${i + 1}`);
+    let scenes: ClipScene[] = clipRows.map((_, i) => emptyScene(i));
     if (valid.length === clipRows.length) {
       try {
-        descriptions = await describeClipsBatch(valid, LOVABLE_KEY);
-        if (descriptions.length !== clipRows.length) {
-          // pad/trim
-          descriptions = clipRows.map((_, i) => descriptions[i] ?? `Клип ${i + 1}`);
+        scenes = await describeClipsBatch(valid, LOVABLE_KEY);
+        if (scenes.length !== clipRows.length) {
+          scenes = clipRows.map((_, i) => scenes[i] ?? emptyScene(i));
         }
       } catch (e) {
         console.error("vision failed, using fallback", e);
       }
     }
 
-    // Save descriptions back
+    // Save scene meta back
     for (let i = 0; i < clipRows.length; i++) {
       await admin.from("montage_clips").update({
-        meta: { ...(clipRows[i].meta as any ?? {}), description: descriptions[i] },
+        meta: { ...(clipRows[i].meta as any ?? {}), description: scenes[i].description, scene: scenes[i] },
       }).eq("id", clipRows[i].id);
     }
 
     const clipsMeta: ClipMeta[] = clipRows.map((c, i) => ({
-      id: c.id, idx: i, duration: Number(c.duration), description: descriptions[i],
+      id: c.id, idx: i, duration: Number(c.duration),
+      description: scenes[i].description, scene: scenes[i],
     }));
 
-    // 5. Layout
+    // 5. Layout (AI) + semantic reinforcement
     console.log("requesting layout");
     let segs;
     try {
       segs = await layoutSegments(blocks, clipsMeta, mode, LOVABLE_KEY);
     } catch (e) {
-      console.error("layout failed, fallback to round-robin", e);
+      console.error("layout failed, fallback to keyword-best-match", e);
+      // Fallback: pick best keyword-overlap clip per block, avoid consecutive repeats.
+      const kw = clipsMeta.map(clipKeywords);
+      let prev = -1;
       segs = blocks.map((b, i) => {
-        const ci = i % clipsMeta.length;
-        const c = clipsMeta[ci];
+        let bestIdx = i % clipsMeta.length, bestScore = -1;
+        for (let c = 0; c < clipsMeta.length; c++) {
+          if (c === prev && clipsMeta.length > 1) continue;
+          const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : 0;
+          if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+        }
+        prev = bestIdx;
+        const c = clipsMeta[bestIdx];
         const dur = b.end - b.start;
-        const clip_in = Math.max(0, Math.min(c.duration - dur, 0));
         return {
-          block_idx: b.idx, clip_idx: ci, clip_in,
-          clip_out: Math.min(c.duration, clip_in + dur),
-          reason: "Авто-чередование (AI fallback)",
+          block_idx: b.idx, clip_idx: bestIdx, clip_in: 0,
+          clip_out: Math.min(c.duration, dur),
+          reason: mode === "speech" && bestScore > 0
+            ? `Подбор по ключевым словам (score=${bestScore})`
+            : "Авто-чередование (fallback)",
         };
       });
     }
+
+    if (mode === "speech") reinforceSemanticMatch(segs, blocks, clipsMeta);
+
 
     // 6. Save segments
     await admin.from("montage_segments").delete().eq("project_id", project_id);
