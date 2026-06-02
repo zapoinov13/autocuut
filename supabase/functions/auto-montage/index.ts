@@ -318,49 +318,62 @@ Deno.serve(async (req) => {
       }
     }
     const valid = thumbB64.filter(Boolean);
-    let descriptions: string[] = clipRows.map((_, i) => `Клип ${i + 1}`);
+    let scenes: ClipScene[] = clipRows.map((_, i) => emptyScene(i));
     if (valid.length === clipRows.length) {
       try {
-        descriptions = await describeClipsBatch(valid, LOVABLE_KEY);
-        if (descriptions.length !== clipRows.length) {
-          // pad/trim
-          descriptions = clipRows.map((_, i) => descriptions[i] ?? `Клип ${i + 1}`);
+        scenes = await describeClipsBatch(valid, LOVABLE_KEY);
+        if (scenes.length !== clipRows.length) {
+          scenes = clipRows.map((_, i) => scenes[i] ?? emptyScene(i));
         }
       } catch (e) {
         console.error("vision failed, using fallback", e);
       }
     }
 
-    // Save descriptions back
+    // Save scene meta back
     for (let i = 0; i < clipRows.length; i++) {
       await admin.from("montage_clips").update({
-        meta: { ...(clipRows[i].meta as any ?? {}), description: descriptions[i] },
+        meta: { ...(clipRows[i].meta as any ?? {}), description: scenes[i].description, scene: scenes[i] },
       }).eq("id", clipRows[i].id);
     }
 
     const clipsMeta: ClipMeta[] = clipRows.map((c, i) => ({
-      id: c.id, idx: i, duration: Number(c.duration), description: descriptions[i],
+      id: c.id, idx: i, duration: Number(c.duration),
+      description: scenes[i].description, scene: scenes[i],
     }));
 
-    // 5. Layout
+    // 5. Layout (AI) + semantic reinforcement
     console.log("requesting layout");
     let segs;
     try {
       segs = await layoutSegments(blocks, clipsMeta, mode, LOVABLE_KEY);
     } catch (e) {
-      console.error("layout failed, fallback to round-robin", e);
+      console.error("layout failed, fallback to keyword-best-match", e);
+      // Fallback: pick best keyword-overlap clip per block, avoid consecutive repeats.
+      const kw = clipsMeta.map(clipKeywords);
+      let prev = -1;
       segs = blocks.map((b, i) => {
-        const ci = i % clipsMeta.length;
-        const c = clipsMeta[ci];
+        let bestIdx = i % clipsMeta.length, bestScore = -1;
+        for (let c = 0; c < clipsMeta.length; c++) {
+          if (c === prev && clipsMeta.length > 1) continue;
+          const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : 0;
+          if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+        }
+        prev = bestIdx;
+        const c = clipsMeta[bestIdx];
         const dur = b.end - b.start;
-        const clip_in = Math.max(0, Math.min(c.duration - dur, 0));
         return {
-          block_idx: b.idx, clip_idx: ci, clip_in,
-          clip_out: Math.min(c.duration, clip_in + dur),
-          reason: "Авто-чередование (AI fallback)",
+          block_idx: b.idx, clip_idx: bestIdx, clip_in: 0,
+          clip_out: Math.min(c.duration, dur),
+          reason: mode === "speech" && bestScore > 0
+            ? `Подбор по ключевым словам (score=${bestScore})`
+            : "Авто-чередование (fallback)",
         };
       });
     }
+
+    if (mode === "speech") reinforceSemanticMatch(segs, blocks, clipsMeta);
+
 
     // 6. Save segments
     await admin.from("montage_segments").delete().eq("project_id", project_id);
