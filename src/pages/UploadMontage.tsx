@@ -11,9 +11,9 @@ import { FORMATS, VideoFormat } from "@/components/editor/panels/FormatPanel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const MAX_CLIP_SIZE = 200 * 1024 * 1024;
-const MAX_AUDIO_SIZE = 50 * 1024 * 1024;
-const MAX_CLIPS = 20;
+const MAX_CLIP_SIZE = 500 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 300 * 1024 * 1024;
+const MAX_CLIPS = 30;
 
 interface ClipItem {
   file: File;
@@ -21,27 +21,66 @@ interface ClipItem {
   thumbDataUrl: string;
 }
 
-const extractClipMeta = (f: File): Promise<{ duration: number; thumbBlob: Blob; thumbDataUrl: string }> =>
-  new Promise((resolve, reject) => {
+const PLACEHOLDER_THUMB =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 180'><rect width='320' height='180' fill='%23222'/><text x='50%25' y='50%25' fill='%23888' font-family='sans-serif' font-size='16' text-anchor='middle' dy='.3em'>video</text></svg>`
+  );
+
+// Robust meta extractor: NEVER hangs. Resolves with placeholder on timeout/error,
+// so one weird file doesn't block the rest of the queue.
+const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: string }> =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(f);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.muted = true;
-    v.src = URL.createObjectURL(f);
-    v.onloadedmetadata = () => { v.currentTime = Math.min(v.duration / 2, v.duration - 0.1); };
-    v.onseeked = () => {
-      const canvas = document.createElement("canvas");
-      const w = 320;
-      const h = (w * v.videoHeight) / v.videoWidth || 180;
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d")!.drawImage(v, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-      canvas.toBlob((b) => {
-        URL.revokeObjectURL(v.src);
-        if (b) resolve({ duration: v.duration, thumbBlob: b, thumbDataUrl: dataUrl });
-        else reject(new Error("thumb fail"));
-      }, "image/jpeg", 0.75);
+    (v as any).playsInline = true;
+    v.src = url;
+
+    let done = false;
+    const finish = (duration: number, thumb: string) => {
+      if (done) return;
+      done = true;
+      try { URL.revokeObjectURL(url); } catch {}
+      resolve({ duration: isFinite(duration) && duration > 0 ? duration : 0, thumbDataUrl: thumb });
     };
-    v.onerror = () => reject(new Error("Не удалось прочитать видео"));
+
+    const hardTimeout = setTimeout(() => finish(v.duration || 0, PLACEHOLDER_THUMB), 12000);
+
+    v.onloadedmetadata = () => {
+      const dur = v.duration || 0;
+      try {
+        v.currentTime = Math.min(Math.max(dur / 2, 0.1), Math.max(dur - 0.1, 0.1));
+      } catch {
+        clearTimeout(hardTimeout);
+        finish(dur, PLACEHOLDER_THUMB);
+        return;
+      }
+      // если seek не выстрелит (часто на .mov/.mkv) — выходим с плейсхолдером
+      setTimeout(() => {
+        if (!done) { clearTimeout(hardTimeout); finish(dur, PLACEHOLDER_THUMB); }
+      }, 4000);
+    };
+
+    v.onseeked = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const w = 320;
+        const h = v.videoWidth ? Math.round((w * v.videoHeight) / v.videoWidth) : 180;
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx && v.videoWidth) ctx.drawImage(v, 0, 0, w, h);
+        const dataUrl = (ctx && v.videoWidth) ? canvas.toDataURL("image/jpeg", 0.7) : PLACEHOLDER_THUMB;
+        clearTimeout(hardTimeout);
+        finish(v.duration, dataUrl || PLACEHOLDER_THUMB);
+      } catch {
+        clearTimeout(hardTimeout);
+        finish(v.duration, PLACEHOLDER_THUMB);
+      }
+    };
+
+    v.onerror = () => { clearTimeout(hardTimeout); finish(0, PLACEHOLDER_THUMB); };
   });
 
 const UploadMontage = () => {
@@ -57,35 +96,47 @@ const UploadMontage = () => {
   const onAudioDrop = useCallback((accepted: File[]) => {
     const f = accepted[0];
     if (!f) return;
-    if (f.size > MAX_AUDIO_SIZE) { toast.error("Аудио > 50 МБ"); return; }
+    if (f.size > MAX_AUDIO_SIZE) { toast.error(`Аудио > ${Math.round(MAX_AUDIO_SIZE / 1024 / 1024)} МБ`); return; }
     setAudio(f);
   }, []);
 
   const onClipsDrop = useCallback(async (accepted: File[]) => {
+    if (!accepted.length) return;
     if (clips.length + accepted.length > MAX_CLIPS) {
       toast.error(`Максимум ${MAX_CLIPS} клипов`); return;
     }
-    const newOnes: ClipItem[] = [];
-    for (const f of accepted) {
-      if (f.size > MAX_CLIP_SIZE) { toast.error(`${f.name} > 200 МБ`); continue; }
-      try {
-        const { duration, thumbDataUrl } = await extractClipMeta(f);
-        newOnes.push({ file: f, duration, thumbDataUrl });
-      } catch (e: any) {
-        toast.error(`${f.name}: ${e.message}`);
+    const valid = accepted.filter((f) => {
+      if (f.size > MAX_CLIP_SIZE) {
+        toast.error(`${f.name} > 500 МБ`); return false;
       }
-    }
-    setClips((prev) => [...prev, ...newOnes]);
+      return true;
+    });
+    if (!valid.length) return;
+
+    toast.message(`Обработка ${valid.length} клипа(ов)...`);
+    // Параллельно — один зависший файл не блокирует остальные (у extractClipMeta встроенный таймаут).
+    const results = await Promise.all(
+      valid.map(async (f) => {
+        const { duration, thumbDataUrl } = await extractClipMeta(f);
+        return { file: f, duration, thumbDataUrl } as ClipItem;
+      })
+    );
+    setClips((prev) => [...prev, ...results]);
+    toast.success(`Добавлено клипов: ${results.length}`);
   }, [clips.length]);
 
   const audioDrop = useDropzone({
     onDrop: onAudioDrop,
-    accept: { "audio/*": [".mp3", ".wav", ".m4a", ".aac", ".ogg"] },
+    accept: {
+      "audio/*": [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus", ".weba"],
+    },
     maxFiles: 1, multiple: false,
   });
   const clipsDrop = useDropzone({
     onDrop: onClipsDrop,
-    accept: { "video/*": [".mp4", ".mov", ".webm", ".mkv"] },
+    accept: {
+      "video/*": [".mp4", ".mov", ".webm", ".mkv", ".m4v", ".3gp", ".avi"],
+    },
     multiple: true,
   });
 
@@ -246,7 +297,7 @@ const UploadMontage = () => {
             <input {...clipsDrop.getInputProps()} />
             <UploadIcon className="h-6 w-6 text-primary mx-auto mb-1" />
             <p className="text-sm font-medium">+ Добавить клипы (можно сразу несколько)</p>
-            <p className="text-xs text-muted-foreground mt-0.5">3–30 сек каждый · до 200 МБ</p>
+            <p className="text-xs text-muted-foreground mt-0.5">MP4 / MOV / WEBM · до 500 МБ каждый</p>
           </div>
 
           {clips.length > 0 && (
