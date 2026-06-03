@@ -23,6 +23,7 @@ const fmt = (s: number) => {
 };
 
 export const TimelinePanel = ({ projectId, audioPath }: Props) => {
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
