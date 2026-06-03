@@ -129,7 +129,7 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
   }
 
   const total = Math.max(...data.segments.map((s) => s.audio_end));
-  const pxPerSec = 50;
+  const pxPerSec = isMobile ? 32 : 50;
 
   return (
     <div className="space-y-4">
