@@ -96,7 +96,7 @@ const UploadMontage = () => {
   const onAudioDrop = useCallback((accepted: File[]) => {
     const f = accepted[0];
     if (!f) return;
-    if (f.size > MAX_AUDIO_SIZE) { toast.error("Аудио > 50 МБ"); return; }
+    if (f.size > MAX_AUDIO_SIZE) { toast.error(`Аудио > ${Math.round(MAX_AUDIO_SIZE / 1024 / 1024)} МБ`); return; }
     setAudio(f);
   }, []);
 
