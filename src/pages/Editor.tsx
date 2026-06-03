@@ -3,12 +3,13 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Sparkles, Loader2, Download, Music, Wand2, ZoomIn, Film,
-  Scissors, Anchor, Mic, Eye, Captions, LayoutTemplate,
+  Scissors, Anchor, Mic, Eye, Captions, LayoutTemplate, Play, Settings2,
 } from "lucide-react";
 import { VideoPreview } from "@/components/editor/VideoPreview";
 import { StylePanel } from "@/components/editor/StylePanel";
@@ -21,6 +22,8 @@ import { ExportDialog } from "@/components/editor/panels/ExportDialog";
 import { FormatPanel, FORMATS, VideoFormat } from "@/components/editor/panels/FormatPanel";
 import { STYLES, StyleId, SubtitleStyle, getEffectiveSubtitleStyle, loadCustomStyle } from "@/lib/styles";
 import { toast } from "sonner";
+
+type MobileTab = "preview" | "edit" | "ai";
 
 const Editor = () => {
   const { id } = useParams<{ id: string }>();
