@@ -29,12 +29,14 @@ const Editor = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const [customStyle, setCustomStyle] = useState<SubtitleStyle>(() => loadCustomStyle());
   const [styleSheetOpen, setStyleSheetOpen] = useState(false);
   const [styleTab, setStyleTab] = useState<"presets" | "custom" | "text">("presets");
   const [localStyleId, setLocalStyleId] = useState<StyleId | null>(null);
   const [localSubtitleY, setLocalSubtitleY] = useState<number | null>(null);
   const [localWords, setLocalWords] = useState<{ text: string; start: number; end: number }[] | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("preview");
 
   const { data, isLoading } = useQuery({
     queryKey: ["editor", id],
