@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Play, Pause, RotateCw, Trash2, Replace, Music } from "lucide-react";
+import { Loader2, Play, Pause, RotateCw, Trash2, Music } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
 interface Props { projectId: string; audioPath: string | null; }
