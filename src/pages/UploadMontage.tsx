@@ -297,7 +297,7 @@ const UploadMontage = () => {
             <input {...clipsDrop.getInputProps()} />
             <UploadIcon className="h-6 w-6 text-primary mx-auto mb-1" />
             <p className="text-sm font-medium">+ Добавить клипы (можно сразу несколько)</p>
-            <p className="text-xs text-muted-foreground mt-0.5">3–30 сек каждый · до 200 МБ</p>
+            <p className="text-xs text-muted-foreground mt-0.5">MP4 / MOV / WEBM · до 500 МБ каждый</p>
           </div>
 
           {clips.length > 0 && (
