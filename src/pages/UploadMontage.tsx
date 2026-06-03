@@ -101,30 +101,42 @@ const UploadMontage = () => {
   }, []);
 
   const onClipsDrop = useCallback(async (accepted: File[]) => {
+    if (!accepted.length) return;
     if (clips.length + accepted.length > MAX_CLIPS) {
       toast.error(`Максимум ${MAX_CLIPS} клипов`); return;
     }
-    const newOnes: ClipItem[] = [];
-    for (const f of accepted) {
-      if (f.size > MAX_CLIP_SIZE) { toast.error(`${f.name} > 200 МБ`); continue; }
-      try {
-        const { duration, thumbDataUrl } = await extractClipMeta(f);
-        newOnes.push({ file: f, duration, thumbDataUrl });
-      } catch (e: any) {
-        toast.error(`${f.name}: ${e.message}`);
+    const valid = accepted.filter((f) => {
+      if (f.size > MAX_CLIP_SIZE) {
+        toast.error(`${f.name} > 500 МБ`); return false;
       }
-    }
-    setClips((prev) => [...prev, ...newOnes]);
+      return true;
+    });
+    if (!valid.length) return;
+
+    toast.message(`Обработка ${valid.length} клипа(ов)...`);
+    // Параллельно — один зависший файл не блокирует остальные (у extractClipMeta встроенный таймаут).
+    const results = await Promise.all(
+      valid.map(async (f) => {
+        const { duration, thumbDataUrl } = await extractClipMeta(f);
+        return { file: f, duration, thumbDataUrl } as ClipItem;
+      })
+    );
+    setClips((prev) => [...prev, ...results]);
+    toast.success(`Добавлено клипов: ${results.length}`);
   }, [clips.length]);
 
   const audioDrop = useDropzone({
     onDrop: onAudioDrop,
-    accept: { "audio/*": [".mp3", ".wav", ".m4a", ".aac", ".ogg"] },
+    accept: {
+      "audio/*": [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus", ".weba"],
+    },
     maxFiles: 1, multiple: false,
   });
   const clipsDrop = useDropzone({
     onDrop: onClipsDrop,
-    accept: { "video/*": [".mp4", ".mov", ".webm", ".mkv"] },
+    accept: {
+      "video/*": [".mp4", ".mov", ".webm", ".mkv", ".m4v", ".3gp", ".avi"],
+    },
     multiple: true,
   });
 
