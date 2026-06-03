@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Play, Pause, RotateCw, Trash2, Replace, Music } from "lucide-react";
+import { Loader2, Play, Pause, RotateCw, Trash2, Music } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
 interface Props { projectId: string; audioPath: string | null; }
@@ -22,6 +23,7 @@ const fmt = (s: number) => {
 };
 
 export const TimelinePanel = ({ projectId, audioPath }: Props) => {
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -127,7 +129,7 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
   }
 
   const total = Math.max(...data.segments.map((s) => s.audio_end));
-  const pxPerSec = 50;
+  const pxPerSec = isMobile ? 32 : 50;
 
   return (
     <div className="space-y-4">
