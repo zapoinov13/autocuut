@@ -117,19 +117,128 @@ const Editor = () => {
     setStyleSheetOpen(true);
   };
 
+  const editPanel = (
+    <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto h-full">
+      <SectionTitle>Edit</SectionTitle>
+      <div className="grid grid-cols-1 gap-2">
+        <FormatPanel
+          projectId={project.id}
+          format={format}
+          subtitlePosition={(project.subtitle_position as string) ?? "bottom"}
+          trigger={<ToolButton icon={LayoutTemplate} label={`Формат: ${formatMeta.name}`} />}
+        />
+        <StylePanel
+          styleId={styleId}
+          onPick={handleStyleChange}
+          onCustomChange={setCustomStyle}
+          words={words}
+          onWordsChange={updateSubtitleWords}
+          subtitleY={subtitleY}
+          onSubtitleYChange={updateSubtitleY}
+          open={styleSheetOpen}
+          onOpenChange={setStyleSheetOpen}
+          defaultTab={styleTab}
+          trigger={<ToolButton icon={Captions} label="Стиль субтитров" />}
+        />
+        <ScenesPanel
+          projectId={project.id}
+          userId={user.id}
+          format={format}
+          scenes={scenes as any}
+          trigger={<ToolButton icon={Film} label={`Сцены (${scenes.length})`} />}
+        />
+        <TrimPanel
+          projectId={project.id}
+          duration={Number(project.duration ?? 0)}
+          trimStart={project.trim_start as any}
+          trimEnd={project.trim_end as any}
+          trigger={<ToolButton icon={Scissors} label="Обрезать" />}
+        />
+      </div>
+
+      <SectionTitle className="mt-5">AI Tools</SectionTitle>
+      <div className="space-y-2">
+        <ToggleTile icon={Captions} label="AI Captions" desc="Стилизованные субтитры"
+          checked={project.captions_enabled ?? true}
+          onCheckedChange={(v) => toggleProjectField("captions_enabled", v)} />
+        <ToggleTile icon={Mic} label="Clean Audio" desc="Убрать шум, нормализовать громкость"
+          checked={project.clean_audio ?? false}
+          onCheckedChange={(v) => toggleProjectField("clean_audio", v)} />
+        <ToggleTile icon={Anchor} label="AI Hook Title" desc="Генерация заголовка-крючка"
+          checked={!!project.title_suggestion} onCheckedChange={() => {}} disabled />
+        <ToggleTile icon={Eye} label="Eye Contact" desc="Скоро · Коррекция взгляда"
+          checked={false} onCheckedChange={() => {}} disabled />
+      </div>
+    </Card>
+  );
+
+  const previewPanel = (
+    <div className="flex items-center justify-center min-h-0 overflow-hidden h-full w-full">
+      {(project as any).kind === "montage" ? (
+        <div className="w-full h-full overflow-y-auto p-1">
+          <TimelinePanel projectId={project.id} audioPath={(project as any).audio_path ?? null} />
+        </div>
+      ) : videoUrl ? (
+        <VideoPreview
+          videoUrl={videoUrl}
+          subtitleStyle={effectiveStyle}
+          subtitleY={subtitleY}
+          onSubtitleYChange={updateSubtitleY}
+          onEditSubtitle={() => openSubtitleEditor("text")}
+          words={(project.captions_enabled ?? true) ? words : []}
+          scenes={scenes as any}
+          format={format}
+          musicUrl={project.music_url as any}
+          musicVolume={project.music_volume ?? 20}
+        />
+      ) : (
+        <div className="bg-surface-1 rounded-2xl flex items-center justify-center"
+          style={{ aspectRatio: format === "landscape" ? "16/9" : "9/16", height: "100%", maxHeight: "calc(100vh - 200px)" }}>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
+    </div>
+  );
+
+  const aiPanel = (
+    <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto h-full">
+      <SectionTitle>AI Boost</SectionTitle>
+      <div className="space-y-2">
+        <ToolBigButton icon={ZoomIn} label="AI Auto Zooms" desc="Зум на ключевых моментах"
+          onClick={() => toast.info("AI Авто-зумы запущены", { description: "Сцены будут обновлены через минуту" })} />
+        <BrollPanel projectId={project.id} userId={user.id} format={format} scenes={scenes as any}
+          trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Pexels стоковые вставки" />} />
+        <MusicPanel projectId={project.id} userId={user.id}
+          musicUrl={project.music_url as any} musicVolume={project.music_volume ?? 20}
+          trigger={
+            <ToolBigButton asDiv icon={Music} label={project.music_url ? `Музыка · ${project.music_volume}%` : "Add Music"} desc="Библиотека + громкость" />
+          } />
+        <ToolBigButton icon={Wand2} label="Remove Silences" desc="Скоро"
+          onClick={() => toast.info("Скоро будет доступно")} disabled />
+      </div>
+
+      <SectionTitle className="mt-5">Текущий стиль</SectionTitle>
+      <div className="p-3 rounded-lg bg-surface-1 border border-border/40">
+        <div className="text-2xl">{STYLES[styleId].emoji}</div>
+        <p className="text-sm font-medium mt-1">{STYLES[styleId].name}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2">{STYLES[styleId].description}</p>
+      </div>
+    </Card>
+  );
+
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-[100dvh] bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <header className="border-b border-border/40 backdrop-blur-xl bg-background/80 shrink-0">
-        <div className="px-4 flex h-14 items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="icon" asChild>
+        <div className="px-3 sm:px-4 flex h-14 items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="icon" asChild className="h-9 w-9 shrink-0">
               <Link to="/dashboard"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
             <div className="min-w-0">
               <h1 className="font-semibold truncate text-sm">{project.title_suggestion ?? project.title}</h1>
               {project.viral_score !== null && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Sparkles className="h-3 w-3 text-primary" />
                   Viral: <span className="text-primary font-semibold">{project.viral_score}/100</span>
                 </div>
@@ -149,9 +258,9 @@ const Editor = () => {
               captionsEnabled={project.captions_enabled ?? true}
               subtitleY={subtitleY}
               trigger={
-                <Button className="shadow-glow">
-                  <Download className="mr-2 h-4 w-4" />
-                  Экспорт
+                <Button size={isMobile ? "icon" : "default"} className="shadow-glow shrink-0">
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Экспорт</span>
                 </Button>
               }
             />
@@ -159,120 +268,38 @@ const Editor = () => {
         </div>
       </header>
 
-      {/* 3-column layout */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-3 p-3 overflow-hidden">
-        {/* LEFT — Edit tools */}
-        <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto">
-          <SectionTitle>Edit</SectionTitle>
-          <div className="grid grid-cols-1 gap-2">
-            <FormatPanel
-              projectId={project.id}
-              format={format}
-              subtitlePosition={(project.subtitle_position as string) ?? "bottom"}
-              trigger={<ToolButton icon={LayoutTemplate} label={`Формат: ${formatMeta.name}`} />}
-            />
-            <StylePanel
-              styleId={styleId}
-              onPick={handleStyleChange}
-              onCustomChange={setCustomStyle}
-              words={words}
-              onWordsChange={updateSubtitleWords}
-              subtitleY={subtitleY}
-              onSubtitleYChange={updateSubtitleY}
-              open={styleSheetOpen}
-              onOpenChange={setStyleSheetOpen}
-              defaultTab={styleTab}
-              trigger={
-                <ToolButton icon={Captions} label="Стиль субтитров" />
-              }
-            />
-            <ScenesPanel
-              projectId={project.id}
-              userId={user.id}
-              format={format}
-              scenes={scenes as any}
-              trigger={
-                <ToolButton icon={Film} label={`Сцены (${scenes.length})`} />
-              }
-            />
-            <TrimPanel
-              projectId={project.id}
-              duration={Number(project.duration ?? 0)}
-              trimStart={project.trim_start as any}
-              trimEnd={project.trim_end as any}
-              trigger={<ToolButton icon={Scissors} label="Обрезать" />}
-            />
+      {/* Desktop: 3-col grid. Mobile: single panel via tabs */}
+      {isMobile ? (
+        <>
+          <div className="flex-1 min-h-0 overflow-hidden p-2">
+            {mobileTab === "preview" && previewPanel}
+            {mobileTab === "edit" && editPanel}
+            {mobileTab === "ai" && aiPanel}
           </div>
-
-          <SectionTitle className="mt-5">AI Tools</SectionTitle>
-          <div className="space-y-2">
-            <ToggleTile icon={Captions} label="AI Captions" desc="Стилизованные субтитры"
-              checked={project.captions_enabled ?? true}
-              onCheckedChange={(v) => toggleProjectField("captions_enabled", v)} />
-            <ToggleTile icon={Mic} label="Clean Audio" desc="Убрать шум, нормализовать громкость"
-              checked={project.clean_audio ?? false}
-              onCheckedChange={(v) => toggleProjectField("clean_audio", v)} />
-            <ToggleTile icon={Anchor} label="AI Hook Title" desc="Генерация заголовка-крючка"
-              checked={!!project.title_suggestion} onCheckedChange={() => {}} disabled />
-            <ToggleTile icon={Eye} label="Eye Contact" desc="Скоро · Коррекция взгляда"
-              checked={false} onCheckedChange={() => {}} disabled />
-          </div>
-        </Card>
-
-        {/* CENTER — Video preview or Timeline (montage) */}
-        <div className="flex items-center justify-center min-h-0 overflow-hidden">
-          {(project as any).kind === "montage" ? (
-            <div className="w-full h-full overflow-y-auto">
-              <TimelinePanel projectId={project.id} audioPath={(project as any).audio_path ?? null} />
-            </div>
-          ) : videoUrl ? (
-            <VideoPreview
-              videoUrl={videoUrl}
-              subtitleStyle={effectiveStyle}
-              subtitleY={subtitleY}
-              onSubtitleYChange={updateSubtitleY}
-              onEditSubtitle={() => openSubtitleEditor("text")}
-              words={(project.captions_enabled ?? true) ? words : []}
-              scenes={scenes as any}
-              format={format}
-              musicUrl={project.music_url as any}
-              musicVolume={project.music_volume ?? 20}
-            />
-          ) : (
-            <div className="bg-surface-1 rounded-2xl flex items-center justify-center" style={{ aspectRatio: format === "landscape" ? "16/9" : "9/16", height: "100%", maxHeight: "calc(100vh - 180px)" }}>
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          )}
+          <nav className="border-t border-border/40 bg-background/95 backdrop-blur-xl shrink-0 grid grid-cols-3 pb-[env(safe-area-inset-bottom)]">
+            <TabBtn active={mobileTab === "preview"} onClick={() => setMobileTab("preview")} icon={Play} label="Превью" />
+            <TabBtn active={mobileTab === "edit"} onClick={() => setMobileTab("edit")} icon={Settings2} label="Правка" />
+            <TabBtn active={mobileTab === "ai"} onClick={() => setMobileTab("ai")} icon={Sparkles} label="AI" />
+          </nav>
+        </>
+      ) : (
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-3 p-3 overflow-hidden">
+          {editPanel}
+          {previewPanel}
+          {aiPanel}
         </div>
-
-        {/* RIGHT — AI Boost */}
-        <Card className="bg-gradient-card border-border/60 p-3 overflow-y-auto">
-          <SectionTitle>AI Boost</SectionTitle>
-          <div className="space-y-2">
-            <ToolBigButton icon={ZoomIn} label="AI Auto Zooms" desc="Зум на ключевых моментах"
-              onClick={() => toast.info("AI Авто-зумы запущены", { description: "Сцены будут обновлены через минуту" })} />
-            <BrollPanel projectId={project.id} userId={user.id} format={format} scenes={scenes as any}
-              trigger={<ToolBigButton asDiv icon={Film} label="AI Auto B-rolls" desc="Pexels стоковые вставки" />} />
-            <MusicPanel projectId={project.id} userId={user.id}
-              musicUrl={project.music_url as any} musicVolume={project.music_volume ?? 20}
-              trigger={
-                <ToolBigButton asDiv icon={Music} label={project.music_url ? `Музыка · ${project.music_volume}%` : "Add Music"} desc="Библиотека + громкость" />
-              } />
-            <ToolBigButton icon={Wand2} label="Remove Silences" desc="Скоро"
-              onClick={() => toast.info("Скоро будет доступно")} disabled />
-          </div>
-
-          <SectionTitle className="mt-5">Текущий стиль</SectionTitle>
-          <div className="p-3 rounded-lg bg-surface-1 border border-border/40">
-            <div className="text-2xl">{STYLES[styleId].emoji}</div>
-            <p className="text-sm font-medium mt-1">{STYLES[styleId].name}</p>
-            <p className="text-xs text-muted-foreground line-clamp-2">{STYLES[styleId].description}</p>
-          </div>
-        </Card>
-      </div>
+      )}
     </div>
   );
 };
+
+const TabBtn = ({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: any; label: string }) => (
+  <button onClick={onClick}
+    className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+    <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
+    {label}
+  </button>
+);
 
 const SectionTitle = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <p className={`text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 ${className}`}>{children}</p>
