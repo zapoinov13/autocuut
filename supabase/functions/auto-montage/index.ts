@@ -94,7 +94,7 @@ async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<
         messages: [{ role: "user", content }],
         response_format: { type: "json_object" },
       }),
-    }, 60_000);
+    }, 25_000);
   } catch (e) {
     console.error("vision timeout/error", e);
     return thumbsB64.map((_, i) => emptyScene(i));
@@ -148,6 +148,9 @@ function scoreMatch(blockText: string, clipKw: Set<string>): number {
 async function layoutSegments(
   blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
 ): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
+  const fastKeywordLayout = buildFastKeywordLayout(blocks, clips, mode);
+  if (blocks.length > 14 || clips.length > 12 || mode === "music") return fastKeywordLayout;
+
   const sys = mode === "speech"
     ? `Ты режиссёр монтажа. На вход — блоки голоса (текст + длительность) и клипы со структурным описанием сцены (description, subjects, setting, mood, motion, tags).
 ГЛАВНОЕ ПРАВИЛО: к каждому блоку подбирай клип, который СОВПАДАЕТ ПО СМЫСЛУ с текстом блока.
@@ -191,7 +194,7 @@ async function layoutSegments(
       ],
       response_format: { type: "json_object" },
     }),
-  }, 70_000);
+  }, 25_000);
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`layout AI: ${res.status} ${t.slice(0, 200)}`);
