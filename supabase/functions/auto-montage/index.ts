@@ -384,35 +384,9 @@ Deno.serve(async (req) => {
       description: scenes[i].description, scene: scenes[i],
     }));
 
-    // 5. Layout (AI) + semantic reinforcement
-    console.log("requesting layout");
-    let segs;
-    try {
-      segs = await layoutSegments(blocks, clipsMeta, mode, LOVABLE_KEY);
-    } catch (e) {
-      console.error("layout failed, fallback to keyword-best-match", e);
-      // Fallback: pick best keyword-overlap clip per block, avoid consecutive repeats.
-      const kw = clipsMeta.map(clipKeywords);
-      let prev = -1;
-      segs = blocks.map((b, i) => {
-        let bestIdx = i % clipsMeta.length, bestScore = -1;
-        for (let c = 0; c < clipsMeta.length; c++) {
-          if (c === prev && clipsMeta.length > 1) continue;
-          const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : 0;
-          if (sc > bestScore) { bestScore = sc; bestIdx = c; }
-        }
-        prev = bestIdx;
-        const c = clipsMeta[bestIdx];
-        const dur = b.end - b.start;
-        return {
-          block_idx: b.idx, clip_idx: bestIdx, clip_in: 0,
-          clip_out: Math.min(c.duration, dur),
-          reason: mode === "speech" && bestScore > 0
-            ? `Подбор по ключевым словам (score=${bestScore})`
-            : "Авто-чередование (fallback)",
-        };
-      });
-    }
+    // 5. Fast layout: use AI scene descriptions + keyword matching, no slow second AI call.
+    console.log("building fast layout");
+    const segs = buildFastKeywordLayout(blocks, clipsMeta, mode);
 
     if (mode === "speech") reinforceSemanticMatch(segs, blocks, clipsMeta);
 
