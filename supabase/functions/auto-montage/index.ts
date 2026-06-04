@@ -64,8 +64,17 @@ const emptyScene = (i: number): ClipScene => ({
   description: `Клип ${i + 1}`, subjects: [], setting: "", mood: "", motion: "", tags: [],
 });
 
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<ClipScene[]> {
-  // Ask Gemini Vision for STRUCTURED scene metadata for every clip in one call.
   const content: any[] = [{
     type: "text",
     text: `Проанализируй каждое изображение как сцену из видеоклипа. Для каждого верни строго JSON:
@@ -75,15 +84,21 @@ async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<
   for (const b64 of thumbsB64) {
     if (b64) content.push({ type: "image_url", image_url: { url: b64 } });
   }
-  const res = await fetch(LOVABLE_AI, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [{ role: "user", content }],
-      response_format: { type: "json_object" },
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(LOVABLE_AI, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content }],
+        response_format: { type: "json_object" },
+      }),
+    }, 60_000);
+  } catch (e) {
+    console.error("vision timeout/error", e);
+    return thumbsB64.map((_, i) => emptyScene(i));
+  }
   if (!res.ok) {
     const t = await res.text();
     console.error("vision error", res.status, t.slice(0, 300));
@@ -165,18 +180,18 @@ async function layoutSegments(
     })),
   });
 
-  const res = await fetch(LOVABLE_AI, {
+  const res = await fetchWithTimeout(LOVABLE_AI, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
+      model: "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: sys },
         { role: "user", content: `${user}\n\nВерни строго JSON:\n{"segments":[{"block_idx":0,"clip_idx":0,"clip_in":0,"clip_out":3.5,"reason":"..."}]}` },
       ],
       response_format: { type: "json_object" },
     }),
-  });
+  }, 70_000);
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`layout AI: ${res.status} ${t.slice(0, 200)}`);
