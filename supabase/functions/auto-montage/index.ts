@@ -145,6 +145,33 @@ function scoreMatch(blockText: string, clipKw: Set<string>): number {
   return s;
 }
 
+function buildFastKeywordLayout(
+  blocks: Block[], clips: ClipMeta[], mode: "speech" | "music",
+): { block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[] {
+  const kw = clips.map(clipKeywords);
+  let prev = -1;
+  return blocks.map((b, i) => {
+    let bestIdx = i % clips.length, bestScore = -1;
+    for (let c = 0; c < clips.length; c++) {
+      if (c === prev && clips.length > 1) continue;
+      const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : (c === i % clips.length ? 1 : 0);
+      if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+    }
+    prev = bestIdx;
+    const clip = clips[bestIdx];
+    const dur = Math.max(0.6, b.end - b.start);
+    const maxStart = Math.max(0, clip.duration - dur);
+    const clip_in = maxStart > 0 ? +((i * 1.37) % maxStart).toFixed(2) : 0;
+    return {
+      block_idx: b.idx,
+      clip_idx: bestIdx,
+      clip_in,
+      clip_out: Math.min(clip.duration || dur, clip_in + dur),
+      reason: mode === "speech" && bestScore > 0 ? `Быстрый подбор по смыслу (score=${bestScore})` : "Быстрое чередование клипов",
+    };
+  });
+}
+
 async function layoutSegments(
   blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
 ): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
