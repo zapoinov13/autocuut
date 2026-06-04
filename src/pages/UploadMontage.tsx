@@ -195,34 +195,38 @@ const UploadMontage = () => {
       setProgress(25);
       const baseProgress = 25;
       const perClip = 60 / clips.length;
-
-      for (let i = 0; i < clips.length; i++) {
-        const c = clips[i];
-        setStage(`Загружаем клип ${i + 1}/${clips.length}...`);
+      let uploaded = 0;
+      const rows = new Array(clips.length);
+      const uploadClip = async (c: ClipItem, i: number) => {
+        setStage(`Загружаем клипы ${uploaded + 1}/${clips.length}...`);
         const ext = c.file.name.split(".").pop() ?? "mp4";
         const clipPath = `${user.id}/${project.id}/clip_${i}.${ext}`;
         const thumbPath = `${user.id}/${project.id}/clip_${i}.jpg`;
-
-        const { error: vErr } = await supabase.storage.from("videos")
-          .upload(clipPath, c.file, { contentType: c.file.type, upsert: true });
-        if (vErr) throw vErr;
-
-        // Convert dataUrl to blob for thumb upload
         const thumbBlob = await (await fetch(c.thumbDataUrl)).blob();
-        await supabase.storage.from("thumbnails")
-          .upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true });
-
-        await supabase.from("montage_clips").insert({
+        const [{ error: vErr }, { error: tErr }] = await Promise.all([
+          supabase.storage.from("videos").upload(clipPath, c.file, { contentType: c.file.type, upsert: true }),
+          supabase.storage.from("thumbnails").upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true }),
+        ]);
+        if (vErr) throw vErr;
+        if (tErr) throw tErr;
+        rows[i] = {
           project_id: project.id,
           user_id: user.id,
           storage_path: clipPath,
-          duration: c.duration,
+          duration: c.duration || 4,
           order_index: i,
           meta: { thumb_path: thumbPath, original_name: c.file.name },
-        } as any);
+        };
+        uploaded += 1;
+        setProgress(baseProgress + perClip * uploaded);
+      };
+      const workers = Array.from({ length: Math.min(3, clips.length) }, async (_, worker) => {
+        for (let i = worker; i < clips.length; i += 3) await uploadClip(clips[i], i);
+      });
+      await Promise.all(workers);
 
-        setProgress(baseProgress + perClip * (i + 1));
-      }
+      const { error: clipsErr } = await supabase.from("montage_clips").insert(rows as any);
+      if (clipsErr) throw clipsErr;
 
       // Set thumbnail to first clip
       const { data: thumb0 } = supabase.storage.from("thumbnails").getPublicUrl(`${user.id}/${project.id}/clip_0.jpg`);
