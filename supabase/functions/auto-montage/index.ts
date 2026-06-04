@@ -347,21 +347,20 @@ Deno.serve(async (req) => {
 
     // 4. Describe clips via vision (batch)
     console.log("describing clips");
-    const thumbB64: string[] = [];
-    for (const c of clipRows) {
+    const thumbB64: string[] = await Promise.all(clipRows.map(async (c: any) => {
       const thumbPath = (c.meta as any)?.thumb_path;
-      if (!thumbPath) { thumbB64.push(""); continue; }
+      if (!thumbPath) return "";
       try {
         const { data: img } = await admin.storage.from("thumbnails").download(thumbPath);
-        if (!img) { thumbB64.push(""); continue; }
+        if (!img) return "";
         const buf = new Uint8Array(await img.arrayBuffer());
         // base64
         let s = ""; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
-        thumbB64.push(`data:image/jpeg;base64,${btoa(s)}`);
+        return `data:image/jpeg;base64,${btoa(s)}`;
       } catch (e) {
-        console.warn("thumb fail", e); thumbB64.push("");
+        console.warn("thumb fail", e); return "";
       }
-    }
+    }));
     const valid = thumbB64.filter(Boolean);
     let scenes: ClipScene[] = clipRows.map((_, i) => emptyScene(i));
     if (valid.length === clipRows.length) {
@@ -376,11 +375,9 @@ Deno.serve(async (req) => {
     }
 
     // Save scene meta back
-    for (let i = 0; i < clipRows.length; i++) {
-      await admin.from("montage_clips").update({
+    await Promise.all(clipRows.map((clipRow: any, i: number) => admin.from("montage_clips").update({
         meta: { ...(clipRows[i].meta as any ?? {}), description: scenes[i].description, scene: scenes[i] },
-      }).eq("id", clipRows[i].id);
-    }
+      }).eq("id", clipRow.id)));
 
     const clipsMeta: ClipMeta[] = clipRows.map((c, i) => ({
       id: c.id, idx: i, duration: Number(c.duration),
