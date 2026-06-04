@@ -46,7 +46,7 @@ const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: str
       resolve({ duration: isFinite(duration) && duration > 0 ? duration : 0, thumbDataUrl: thumb });
     };
 
-    const hardTimeout = setTimeout(() => finish(v.duration || 0, PLACEHOLDER_THUMB), 12000);
+    const hardTimeout = setTimeout(() => finish(v.duration || 0, PLACEHOLDER_THUMB), 3500);
 
     v.onloadedmetadata = () => {
       const dur = v.duration || 0;
@@ -57,10 +57,10 @@ const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: str
         finish(dur, PLACEHOLDER_THUMB);
         return;
       }
-      // если seek не выстрелит (часто на .mov/.mkv) — выходим с плейсхолдером
+      // если seek не выстрелит (часто на .mov/.mkv) — быстро выходим с плейсхолдером
       setTimeout(() => {
         if (!done) { clearTimeout(hardTimeout); finish(dur, PLACEHOLDER_THUMB); }
-      }, 4000);
+      }, 900);
     };
 
     v.onseeked = () => {
@@ -143,12 +143,20 @@ const UploadMontage = () => {
   const removeClip = (i: number) => setClips((p) => p.filter((_, idx) => idx !== i));
 
   const getAudioDuration = (f: File): Promise<number> =>
-    new Promise((resolve, reject) => {
+    new Promise((resolve) => {
       const a = new Audio();
       a.preload = "metadata";
       a.src = URL.createObjectURL(f);
-      a.onloadedmetadata = () => { resolve(a.duration); URL.revokeObjectURL(a.src); };
-      a.onerror = () => reject(new Error("audio meta fail"));
+      let done = false;
+      const finish = (duration = 0) => {
+        if (done) return;
+        done = true;
+        try { URL.revokeObjectURL(a.src); } catch {}
+        resolve(isFinite(duration) && duration > 0 ? duration : 0);
+      };
+      const timeout = setTimeout(() => finish(0), 3000);
+      a.onloadedmetadata = () => { clearTimeout(timeout); finish(a.duration); };
+      a.onerror = () => { clearTimeout(timeout); finish(0); };
     });
 
   const handleStart = async () => {
