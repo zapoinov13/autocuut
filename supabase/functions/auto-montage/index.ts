@@ -94,7 +94,7 @@ async function describeClipsBatch(thumbsB64: string[], apiKey: string): Promise<
         messages: [{ role: "user", content }],
         response_format: { type: "json_object" },
       }),
-    }, 60_000);
+    }, 25_000);
   } catch (e) {
     console.error("vision timeout/error", e);
     return thumbsB64.map((_, i) => emptyScene(i));
@@ -145,9 +145,39 @@ function scoreMatch(blockText: string, clipKw: Set<string>): number {
   return s;
 }
 
+function buildFastKeywordLayout(
+  blocks: Block[], clips: ClipMeta[], mode: "speech" | "music",
+): { block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[] {
+  const kw = clips.map(clipKeywords);
+  let prev = -1;
+  return blocks.map((b, i) => {
+    let bestIdx = i % clips.length, bestScore = -1;
+    for (let c = 0; c < clips.length; c++) {
+      if (c === prev && clips.length > 1) continue;
+      const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : (c === i % clips.length ? 1 : 0);
+      if (sc > bestScore) { bestScore = sc; bestIdx = c; }
+    }
+    prev = bestIdx;
+    const clip = clips[bestIdx];
+    const dur = Math.max(0.6, b.end - b.start);
+    const maxStart = Math.max(0, clip.duration - dur);
+    const clip_in = maxStart > 0 ? +((i * 1.37) % maxStart).toFixed(2) : 0;
+    return {
+      block_idx: b.idx,
+      clip_idx: bestIdx,
+      clip_in,
+      clip_out: Math.min(clip.duration || dur, clip_in + dur),
+      reason: mode === "speech" && bestScore > 0 ? `Быстрый подбор по смыслу (score=${bestScore})` : "Быстрое чередование клипов",
+    };
+  });
+}
+
 async function layoutSegments(
   blocks: Block[], clips: ClipMeta[], mode: "speech" | "music", apiKey: string,
 ): Promise<{ block_idx: number; clip_idx: number; clip_in: number; clip_out: number; reason: string }[]> {
+  const fastKeywordLayout = buildFastKeywordLayout(blocks, clips, mode);
+  if (blocks.length > 14 || clips.length > 12 || mode === "music") return fastKeywordLayout;
+
   const sys = mode === "speech"
     ? `Ты режиссёр монтажа. На вход — блоки голоса (текст + длительность) и клипы со структурным описанием сцены (description, subjects, setting, mood, motion, tags).
 ГЛАВНОЕ ПРАВИЛО: к каждому блоку подбирай клип, который СОВПАДАЕТ ПО СМЫСЛУ с текстом блока.
@@ -191,7 +221,7 @@ async function layoutSegments(
       ],
       response_format: { type: "json_object" },
     }),
-  }, 70_000);
+  }, 25_000);
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`layout AI: ${res.status} ${t.slice(0, 200)}`);
@@ -317,21 +347,20 @@ Deno.serve(async (req) => {
 
     // 4. Describe clips via vision (batch)
     console.log("describing clips");
-    const thumbB64: string[] = [];
-    for (const c of clipRows) {
+    const thumbB64: string[] = await Promise.all(clipRows.map(async (c: any) => {
       const thumbPath = (c.meta as any)?.thumb_path;
-      if (!thumbPath) { thumbB64.push(""); continue; }
+      if (!thumbPath) return "";
       try {
         const { data: img } = await admin.storage.from("thumbnails").download(thumbPath);
-        if (!img) { thumbB64.push(""); continue; }
+        if (!img) return "";
         const buf = new Uint8Array(await img.arrayBuffer());
         // base64
         let s = ""; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
-        thumbB64.push(`data:image/jpeg;base64,${btoa(s)}`);
+        return `data:image/jpeg;base64,${btoa(s)}`;
       } catch (e) {
-        console.warn("thumb fail", e); thumbB64.push("");
+        console.warn("thumb fail", e); return "";
       }
-    }
+    }));
     const valid = thumbB64.filter(Boolean);
     let scenes: ClipScene[] = clipRows.map((_, i) => emptyScene(i));
     if (valid.length === clipRows.length) {
@@ -346,46 +375,18 @@ Deno.serve(async (req) => {
     }
 
     // Save scene meta back
-    for (let i = 0; i < clipRows.length; i++) {
-      await admin.from("montage_clips").update({
+    await Promise.all(clipRows.map((clipRow: any, i: number) => admin.from("montage_clips").update({
         meta: { ...(clipRows[i].meta as any ?? {}), description: scenes[i].description, scene: scenes[i] },
-      }).eq("id", clipRows[i].id);
-    }
+      }).eq("id", clipRow.id)));
 
     const clipsMeta: ClipMeta[] = clipRows.map((c, i) => ({
       id: c.id, idx: i, duration: Number(c.duration),
       description: scenes[i].description, scene: scenes[i],
     }));
 
-    // 5. Layout (AI) + semantic reinforcement
-    console.log("requesting layout");
-    let segs;
-    try {
-      segs = await layoutSegments(blocks, clipsMeta, mode, LOVABLE_KEY);
-    } catch (e) {
-      console.error("layout failed, fallback to keyword-best-match", e);
-      // Fallback: pick best keyword-overlap clip per block, avoid consecutive repeats.
-      const kw = clipsMeta.map(clipKeywords);
-      let prev = -1;
-      segs = blocks.map((b, i) => {
-        let bestIdx = i % clipsMeta.length, bestScore = -1;
-        for (let c = 0; c < clipsMeta.length; c++) {
-          if (c === prev && clipsMeta.length > 1) continue;
-          const sc = mode === "speech" ? scoreMatch(b.text, kw[c]) : 0;
-          if (sc > bestScore) { bestScore = sc; bestIdx = c; }
-        }
-        prev = bestIdx;
-        const c = clipsMeta[bestIdx];
-        const dur = b.end - b.start;
-        return {
-          block_idx: b.idx, clip_idx: bestIdx, clip_in: 0,
-          clip_out: Math.min(c.duration, dur),
-          reason: mode === "speech" && bestScore > 0
-            ? `Подбор по ключевым словам (score=${bestScore})`
-            : "Авто-чередование (fallback)",
-        };
-      });
-    }
+    // 5. Fast layout: use AI scene descriptions + keyword matching, no slow second AI call.
+    console.log("building fast layout");
+    const segs = buildFastKeywordLayout(blocks, clipsMeta, mode);
 
     if (mode === "speech") reinforceSemanticMatch(segs, blocks, clipsMeta);
 

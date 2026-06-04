@@ -46,7 +46,7 @@ const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: str
       resolve({ duration: isFinite(duration) && duration > 0 ? duration : 0, thumbDataUrl: thumb });
     };
 
-    const hardTimeout = setTimeout(() => finish(v.duration || 0, PLACEHOLDER_THUMB), 12000);
+    const hardTimeout = setTimeout(() => finish(v.duration || 0, PLACEHOLDER_THUMB), 3500);
 
     v.onloadedmetadata = () => {
       const dur = v.duration || 0;
@@ -57,10 +57,10 @@ const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: str
         finish(dur, PLACEHOLDER_THUMB);
         return;
       }
-      // если seek не выстрелит (часто на .mov/.mkv) — выходим с плейсхолдером
+      // если seek не выстрелит (часто на .mov/.mkv) — быстро выходим с плейсхолдером
       setTimeout(() => {
         if (!done) { clearTimeout(hardTimeout); finish(dur, PLACEHOLDER_THUMB); }
-      }, 4000);
+      }, 900);
     };
 
     v.onseeked = () => {
@@ -143,12 +143,20 @@ const UploadMontage = () => {
   const removeClip = (i: number) => setClips((p) => p.filter((_, idx) => idx !== i));
 
   const getAudioDuration = (f: File): Promise<number> =>
-    new Promise((resolve, reject) => {
+    new Promise((resolve) => {
       const a = new Audio();
       a.preload = "metadata";
       a.src = URL.createObjectURL(f);
-      a.onloadedmetadata = () => { resolve(a.duration); URL.revokeObjectURL(a.src); };
-      a.onerror = () => reject(new Error("audio meta fail"));
+      let done = false;
+      const finish = (duration = 0) => {
+        if (done) return;
+        done = true;
+        try { URL.revokeObjectURL(a.src); } catch {}
+        resolve(isFinite(duration) && duration > 0 ? duration : 0);
+      };
+      const timeout = setTimeout(() => finish(0), 3000);
+      a.onloadedmetadata = () => { clearTimeout(timeout); finish(a.duration); };
+      a.onerror = () => { clearTimeout(timeout); finish(0); };
     });
 
   const handleStart = async () => {
@@ -187,34 +195,38 @@ const UploadMontage = () => {
       setProgress(25);
       const baseProgress = 25;
       const perClip = 60 / clips.length;
-
-      for (let i = 0; i < clips.length; i++) {
-        const c = clips[i];
-        setStage(`Загружаем клип ${i + 1}/${clips.length}...`);
+      let uploaded = 0;
+      const rows = new Array(clips.length);
+      const uploadClip = async (c: ClipItem, i: number) => {
+        setStage(`Загружаем клипы ${uploaded + 1}/${clips.length}...`);
         const ext = c.file.name.split(".").pop() ?? "mp4";
         const clipPath = `${user.id}/${project.id}/clip_${i}.${ext}`;
         const thumbPath = `${user.id}/${project.id}/clip_${i}.jpg`;
-
-        const { error: vErr } = await supabase.storage.from("videos")
-          .upload(clipPath, c.file, { contentType: c.file.type, upsert: true });
-        if (vErr) throw vErr;
-
-        // Convert dataUrl to blob for thumb upload
         const thumbBlob = await (await fetch(c.thumbDataUrl)).blob();
-        await supabase.storage.from("thumbnails")
-          .upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true });
-
-        await supabase.from("montage_clips").insert({
+        const [{ error: vErr }, { error: tErr }] = await Promise.all([
+          supabase.storage.from("videos").upload(clipPath, c.file, { contentType: c.file.type, upsert: true }),
+          supabase.storage.from("thumbnails").upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true }),
+        ]);
+        if (vErr) throw vErr;
+        if (tErr) throw tErr;
+        rows[i] = {
           project_id: project.id,
           user_id: user.id,
           storage_path: clipPath,
-          duration: c.duration,
+          duration: c.duration || 4,
           order_index: i,
           meta: { thumb_path: thumbPath, original_name: c.file.name },
-        } as any);
+        };
+        uploaded += 1;
+        setProgress(baseProgress + perClip * uploaded);
+      };
+      const workers = Array.from({ length: Math.min(3, clips.length) }, async (_, worker) => {
+        for (let i = worker; i < clips.length; i += 3) await uploadClip(clips[i], i);
+      });
+      await Promise.all(workers);
 
-        setProgress(baseProgress + perClip * (i + 1));
-      }
+      const { error: clipsErr } = await supabase.from("montage_clips").insert(rows as any);
+      if (clipsErr) throw clipsErr;
 
       // Set thumbnail to first clip
       const { data: thumb0 } = supabase.storage.from("thumbnails").getPublicUrl(`${user.id}/${project.id}/clip_0.jpg`);
