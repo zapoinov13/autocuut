@@ -78,6 +78,14 @@ const Processing = () => {
     if (!id) return;
     await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
     setError(null);
+
+    // Для авто-монтажа — дёргаем auto-montage, для обычного проекта — старую связку
+    if (project?.kind === "montage") {
+      const { error: mErr } = await supabase.functions.invoke("auto-montage", { body: { project_id: id } });
+      if (mErr) toast.error("Не удалось перезапустить", { description: mErr.message });
+      return;
+    }
+
     const { error: tErr } = await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
     if (tErr) {
       toast.error("Не удалось перезапустить", { description: tErr.message });
