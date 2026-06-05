@@ -24,6 +24,7 @@ const Processing = () => {
     if (!id) return;
 
     let cancelled = false;
+    let kicked = false;
     const fetchProject = async () => {
       const { data, error } = await supabase.from("projects").select("*").eq("id", id).single();
       if (cancelled) return;
@@ -32,6 +33,12 @@ const Processing = () => {
         return;
       }
       setProject(data);
+      // Авто-перезапуск: montage-проект застрял на uploading — значит invoke не дошёл.
+      if (!kicked && data.kind === "montage" && data.status === "uploading") {
+        kicked = true;
+        supabase.functions.invoke("auto-montage", { body: { project_id: id } })
+          .then(({ error }) => { if (error) console.error("auto-montage kick error", error); });
+      }
       if (data.status === "ready") {
         setTimeout(() => navigate(`/editor/${id}`), 800);
       } else if (data.status === "failed") {
@@ -78,6 +85,14 @@ const Processing = () => {
     if (!id) return;
     await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
     setError(null);
+
+    // Для авто-монтажа — дёргаем auto-montage, для обычного проекта — старую связку
+    if (project?.kind === "montage") {
+      const { error: mErr } = await supabase.functions.invoke("auto-montage", { body: { project_id: id } });
+      if (mErr) toast.error("Не удалось перезапустить", { description: mErr.message });
+      return;
+    }
+
     const { error: tErr } = await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
     if (tErr) {
       toast.error("Не удалось перезапустить", { description: tErr.message });
