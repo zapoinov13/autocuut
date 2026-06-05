@@ -234,8 +234,28 @@ const UploadMontage = () => {
 
       setProgress(90);
       setStage("Запускаем AI...");
-      supabase.functions.invoke("auto-montage", { body: { project_id: project.id } })
-        .then(({ error }) => { if (error) console.error("auto-montage error", error); });
+      // Переводим проект в transcribing СРАЗУ, чтобы Processing-страница показала прогресс,
+      // даже если invoke вернётся не моментально.
+      await supabase.from("projects").update({ status: "transcribing" }).eq("id", project.id);
+
+      // ВАЖНО: НЕ fire-and-forget. Если уйти с страницы до отправки запроса,
+      // браузер отменит fetch и edge-функция вообще не запустится (как было в последних проектах).
+      // Запускаем через прямой fetch с keepalive — запрос точно уйдёт, даже если мы навигейтимся.
+      const sess = (await supabase.auth.getSession()).data.session;
+      try {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-montage`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${sess?.access_token ?? ""}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ project_id: project.id }),
+          keepalive: true,
+        });
+      } catch (e) {
+        console.warn("auto-montage kick error (will still navigate)", e);
+      }
 
       toast.success("Загружено! AI собирает монтаж...");
       navigate(`/processing/${project.id}`);
