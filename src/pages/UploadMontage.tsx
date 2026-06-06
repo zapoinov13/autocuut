@@ -207,7 +207,6 @@ const UploadMontage = () => {
       const baseProgress = 25;
       const perClip = 60 / clips.length;
       let uploaded = 0;
-      const rows = new Array(clips.length);
       const uploadClip = async (c: ClipItem, i: number) => {
         setStage(`Загружаем клипы ${uploaded + 1}/${clips.length}...`);
         const ext = c.file.name.split(".").pop() ?? "mp4";
@@ -216,6 +215,17 @@ const UploadMontage = () => {
         const { error: vErr } = await supabase.storage.from("videos")
           .upload(clipPath, c.file, { contentType: c.file.type || "video/mp4", upsert: true });
         if (vErr) throw vErr;
+
+        const clipMeta = { original_name: c.file.name };
+        const { data: clipRow, error: clipInsertErr } = await supabase.from("montage_clips").insert({
+          project_id: project.id,
+          user_id: user.id,
+          storage_path: clipPath,
+          duration: c.duration || 4,
+          order_index: i,
+          meta: clipMeta,
+        } as any).select("id").single();
+        if (clipInsertErr) throw clipInsertErr;
 
         let savedThumbPath: string | null = null;
         try {
@@ -229,14 +239,11 @@ const UploadMontage = () => {
           console.warn("thumbnail upload skipped", thumbErr);
         }
 
-        rows[i] = {
-          project_id: project.id,
-          user_id: user.id,
-          storage_path: clipPath,
-          duration: c.duration || 4,
-          order_index: i,
-          meta: { ...(savedThumbPath ? { thumb_path: savedThumbPath } : {}), original_name: c.file.name },
-        };
+        if (savedThumbPath && clipRow?.id) {
+          await supabase.from("montage_clips").update({
+            meta: { ...clipMeta, thumb_path: savedThumbPath },
+          } as any).eq("id", clipRow.id);
+        }
         uploaded += 1;
         setProgress(baseProgress + perClip * uploaded);
       };
@@ -244,9 +251,6 @@ const UploadMontage = () => {
         for (let i = worker; i < clips.length; i += 3) await uploadClip(clips[i], i);
       });
       await Promise.all(workers);
-
-      const { error: clipsErr } = await supabase.from("montage_clips").insert(rows as any);
-      if (clipsErr) throw clipsErr;
 
       // Set thumbnail to first clip
       const { data: thumb0 } = supabase.storage.from("thumbnails").getPublicUrl(`${user.id}/${project.id}/clip_0.jpg`);
@@ -262,19 +266,19 @@ const UploadMontage = () => {
       // браузер отменит fetch и edge-функция вообще не запустится (как было в последних проектах).
       // Запускаем через прямой fetch с keepalive — запрос точно уйдёт, даже если мы навигейтимся.
       const sess = (await supabase.auth.getSession()).data.session;
-      try {
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-montage`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${sess?.access_token ?? ""}`,
-            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-          body: JSON.stringify({ project_id: project.id }),
-          keepalive: true,
-        });
-      } catch (e) {
-        console.warn("auto-montage kick error (will still navigate)", e);
+      const montageRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-montage`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${sess?.access_token ?? ""}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ project_id: project.id }),
+        keepalive: true,
+      });
+      if (!montageRes.ok) {
+        const errText = await montageRes.text().catch(() => "");
+        throw new Error(errText || `AI не запустился (${montageRes.status})`);
       }
 
       toast.success("Загружено! AI собирает монтаж...");
