@@ -466,6 +466,7 @@ Deno.serve(async (req) => {
     if (!project) throw new Error("Проект не найден");
     if (!project.audio_path) throw new Error("Аудио не загружено");
 
+    await recoverMissingClipRows(admin, project, project_id, user.id);
     const { count } = await admin.from("montage_clips").select("id", { count: "exact", head: true })
       .eq("project_id", project_id).eq("user_id", user.id);
     if (!count || count < 2) throw new Error("Минимум 2 клипа");
