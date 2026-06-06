@@ -264,34 +264,16 @@ function reinforceSemanticMatch(
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const ANON = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
-  const ELEVEN = Deno.env.get("ELEVENLABS_API_KEY");
-  const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
-  let projectId: string | null = null;
-
+async function processMontage(
+  admin: any,
+  project_id: string,
+  userId: string,
+  ELEVEN: string,
+  LOVABLE_KEY: string,
+) {
   try {
-    if (!ELEVEN) throw new Error("ELEVENLABS_API_KEY не настроен");
-    if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY не настроен");
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
-    const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
-    const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
-
-    const { project_id } = await req.json();
-    if (!project_id) throw new Error("project_id required");
-    projectId = project_id;
-
     const { data: project } = await admin.from("projects").select("*")
-      .eq("id", project_id).eq("user_id", user.id).single();
+      .eq("id", project_id).eq("user_id", userId).single();
     if (!project) throw new Error("Проект не найден");
     if (!project.audio_path) throw new Error("Аудио не загружено");
 
@@ -299,7 +281,7 @@ Deno.serve(async (req) => {
       .eq("project_id", project_id).order("order_index");
     if (!clipRows || clipRows.length < 2) throw new Error("Минимум 2 клипа");
 
-    await admin.from("projects").update({ status: "transcribing" }).eq("id", project_id);
+    await admin.from("projects").update({ status: "transcribing", error_message: null }).eq("id", project_id);
 
     // 1. Audio → ElevenLabs
     console.log("downloading audio", project.audio_path);
@@ -332,7 +314,7 @@ Deno.serve(async (req) => {
     if (mode === "speech" && words.length) {
       await admin.from("subtitles").delete().eq("project_id", project_id);
       await admin.from("subtitles").insert({
-        project_id, user_id: user.id,
+        project_id, user_id: userId,
         words: words.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       });
     }
@@ -404,7 +386,7 @@ Deno.serve(async (req) => {
         clip_out = Math.min(clip.duration, blockDur);
       }
       return {
-        project_id, user_id: user.id,
+        project_id, user_id: userId,
         order_index: i,
         clip_id: clip.id,
         clip_in, clip_out,
@@ -425,7 +407,53 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("auto-montage error", msg);
-    await fail(admin, projectId, msg);
+    await fail(admin, project_id, msg);
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const ANON = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
+  const ELEVEN = Deno.env.get("ELEVENLABS_API_KEY");
+  const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  try {
+    if (!ELEVEN) throw new Error("ELEVENLABS_API_KEY не настроен");
+    if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY не настроен");
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
+    const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Не авторизован" }), { status: 401, headers: corsHeaders });
+
+    const { project_id } = await req.json();
+    if (!project_id) throw new Error("project_id required");
+
+    const { data: project } = await admin.from("projects").select("id, user_id, audio_path")
+      .eq("id", project_id).eq("user_id", user.id).single();
+    if (!project) throw new Error("Проект не найден");
+    if (!project.audio_path) throw new Error("Аудио не загружено");
+
+    const { count } = await admin.from("montage_clips").select("id", { count: "exact", head: true })
+      .eq("project_id", project_id).eq("user_id", user.id);
+    if (!count || count < 2) throw new Error("Минимум 2 клипа");
+
+    await admin.from("projects").update({ status: "transcribing", error_message: null }).eq("id", project_id);
+    EdgeRuntime.waitUntil(processMontage(admin, project_id, user.id, ELEVEN, LOVABLE_KEY));
+
+    return new Response(JSON.stringify({ accepted: true }), {
+      status: 202,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("auto-montage start error", msg);
     return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
