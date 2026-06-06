@@ -27,6 +27,15 @@ const PLACEHOLDER_THUMB =
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 180'><rect width='320' height='180' fill='%23222'/><text x='50%25' y='50%25' fill='%23888' font-family='sans-serif' font-size='16' text-anchor='middle' dy='.3em'>video</text></svg>`
   );
 
+const dataUrlToBlob = (dataUrl: string): Blob => {
+  const [meta, data = ""] = dataUrl.split(",");
+  const mime = meta.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+  const binary = meta.includes(";base64") ? atob(data) : decodeURIComponent(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+};
+
 // Robust meta extractor: NEVER hangs. Resolves with placeholder on timeout/error,
 // so one weird file doesn't block the rest of the queue.
 const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: string }> =>
@@ -202,20 +211,28 @@ const UploadMontage = () => {
         const ext = c.file.name.split(".").pop() ?? "mp4";
         const clipPath = `${user.id}/${project.id}/clip_${i}.${ext}`;
         const thumbPath = `${user.id}/${project.id}/clip_${i}.jpg`;
-        const thumbBlob = await (await fetch(c.thumbDataUrl)).blob();
-        const [{ error: vErr }, { error: tErr }] = await Promise.all([
-          supabase.storage.from("videos").upload(clipPath, c.file, { contentType: c.file.type, upsert: true }),
-          supabase.storage.from("thumbnails").upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true }),
-        ]);
+        const { error: vErr } = await supabase.storage.from("videos")
+          .upload(clipPath, c.file, { contentType: c.file.type || "video/mp4", upsert: true });
         if (vErr) throw vErr;
-        if (tErr) throw tErr;
+
+        let savedThumbPath: string | null = null;
+        try {
+          const thumbBlob = dataUrlToBlob(c.thumbDataUrl || PLACEHOLDER_THUMB);
+          const { error: tErr } = await supabase.storage.from("thumbnails")
+            .upload(thumbPath, thumbBlob, { contentType: thumbBlob.type || "image/jpeg", upsert: true });
+          if (tErr) throw tErr;
+          savedThumbPath = thumbPath;
+        } catch (thumbErr) {
+          console.warn("thumbnail upload skipped", thumbErr);
+        }
+
         rows[i] = {
           project_id: project.id,
           user_id: user.id,
           storage_path: clipPath,
           duration: c.duration || 4,
           order_index: i,
-          meta: { thumb_path: thumbPath, original_name: c.file.name },
+          meta: { ...(savedThumbPath ? { thumb_path: savedThumbPath } : {}), original_name: c.file.name },
         };
         uploaded += 1;
         setProgress(baseProgress + perClip * uploaded);
