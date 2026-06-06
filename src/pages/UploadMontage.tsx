@@ -172,6 +172,7 @@ const UploadMontage = () => {
     if (!user || !audio || clips.length < 2) {
       toast.error("Нужен 1 аудио и минимум 2 клипа"); return;
     }
+    let projectId: string | null = null;
     setBusy(true);
     setProgress(5);
     setStage("Создаём проект...");
@@ -189,6 +190,7 @@ const UploadMontage = () => {
         captions_enabled: false,
       } as any).select().single();
       if (pErr || !project) throw pErr ?? new Error("Не удалось создать проект");
+      projectId = project.id;
 
       setProgress(15);
       setStage("Загружаем аудио...");
@@ -279,6 +281,12 @@ const UploadMontage = () => {
     } catch (e: any) {
       console.error(e);
       toast.error("Ошибка", { description: e.message });
+      if (projectId) {
+        await supabase.from("projects").update({
+          status: "failed",
+          error_message: e.message ?? "Ошибка загрузки материалов",
+        } as any).eq("id", projectId);
+      }
       setBusy(false);
     }
   };
