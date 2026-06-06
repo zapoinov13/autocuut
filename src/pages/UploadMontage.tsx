@@ -266,19 +266,19 @@ const UploadMontage = () => {
       // браузер отменит fetch и edge-функция вообще не запустится (как было в последних проектах).
       // Запускаем через прямой fetch с keepalive — запрос точно уйдёт, даже если мы навигейтимся.
       const sess = (await supabase.auth.getSession()).data.session;
-      try {
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-montage`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${sess?.access_token ?? ""}`,
-            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-          body: JSON.stringify({ project_id: project.id }),
-          keepalive: true,
-        });
-      } catch (e) {
-        console.warn("auto-montage kick error (will still navigate)", e);
+      const montageRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-montage`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${sess?.access_token ?? ""}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ project_id: project.id }),
+        keepalive: true,
+      });
+      if (!montageRes.ok) {
+        const errText = await montageRes.text().catch(() => "");
+        throw new Error(errText || `AI не запустился (${montageRes.status})`);
       }
 
       toast.success("Загружено! AI собирает монтаж...");
