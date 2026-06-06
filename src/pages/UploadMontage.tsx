@@ -219,6 +219,7 @@ const UploadMontage = () => {
 
         let savedThumbPath: string | null = null;
         try {
+          if (!c.thumbDataUrl || c.thumbDataUrl === PLACEHOLDER_THUMB) throw new Error("no real thumbnail");
           const thumbBlob = dataUrlToBlob(c.thumbDataUrl || PLACEHOLDER_THUMB);
           const { error: tErr } = await supabase.storage.from("thumbnails")
             .upload(thumbPath, thumbBlob, { contentType: thumbBlob.type || "image/jpeg", upsert: true });
