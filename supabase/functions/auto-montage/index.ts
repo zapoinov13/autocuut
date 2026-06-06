@@ -18,6 +18,31 @@ const fail = async (admin: any, id: string | null, msg: string) => {
   if (admin && id) await admin.from("projects").update({ status: "failed", error_message: msg }).eq("id", id);
 };
 
+const recoverMissingClipRows = async (admin: any, project: any, projectId: string, userId: string) => {
+  const { data: existing } = await admin.from("montage_clips").select("storage_path")
+    .eq("project_id", projectId).eq("user_id", userId);
+  const known = new Set((existing ?? []).map((c: any) => c.storage_path));
+  const prefix = `${userId}/${projectId}`;
+  const { data: objects, error } = await admin.storage.from("videos").list(prefix, { limit: 100, sortBy: { column: "name", order: "asc" } });
+  if (error || !objects?.length) return;
+  const rows = objects
+    .filter((obj: any) => /^clip_\d+\./.test(obj.name))
+    .map((obj: any) => `${prefix}/${obj.name}`)
+    .filter((path: string) => !known.has(path))
+    .map((path: string) => {
+      const order = Number(path.match(/clip_(\d+)\./)?.[1] ?? 0);
+      return {
+        project_id: projectId,
+        user_id: userId,
+        storage_path: path,
+        duration: Number(project.duration) > 0 ? Math.max(4, Math.min(10, Number(project.duration) / Math.max(objects.length, 1))) : 4,
+        order_index: order,
+        meta: { recovered: true, original_name: path.split("/").pop() },
+      };
+    });
+  if (rows.length) await admin.from("montage_clips").insert(rows);
+};
+
 const buildSpeechBlocks = (words: Word[], totalDur: number): Block[] => {
   if (!words.length) return uniformBlocks(totalDur);
   const blocks: Block[] = [];
@@ -277,8 +302,9 @@ async function processMontage(
     if (!project) throw new Error("Проект не найден");
     if (!project.audio_path) throw new Error("Аудио не загружено");
 
+    await recoverMissingClipRows(admin, project, project_id, userId);
     const { data: clipRows } = await admin.from("montage_clips").select("*")
-      .eq("project_id", project_id).order("order_index");
+      .eq("project_id", project_id).eq("user_id", userId).order("order_index");
     if (!clipRows || clipRows.length < 2) throw new Error("Минимум 2 клипа");
 
     await admin.from("projects").update({ status: "transcribing", error_message: null }).eq("id", project_id);
