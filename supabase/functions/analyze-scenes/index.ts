@@ -202,17 +202,24 @@ ${stylePrompt}
 
     // Persist scenes
     await admin.from("scenes").delete().eq("project_id", project_id);
-    const scenesToInsert = result.scenes.map((s: any, i: number) => ({
-      project_id,
-      user_id: user.id,
-      start_time: s.start,
-      end_time: s.end,
-      text: s.text,
-      zoom: s.zoom,
-      highlight_words: s.highlight_words,
-      is_hook: s.is_hook,
-      order_index: i,
-    }));
+    const allNone = result.scenes.every((s: any) => !s.zoom || s.zoom === "none");
+    const scenesToInsert = result.scenes.map((s: any, i: number) => {
+      let zoom = s.zoom || "none";
+      if (allNone) {
+        zoom = s.is_hook ? "in" : i % 3 === 1 ? "out" : i % 3 === 0 ? "in" : "none";
+      }
+      return {
+        project_id,
+        user_id: user.id,
+        start_time: s.start,
+        end_time: s.end,
+        text: s.text,
+        zoom,
+        highlight_words: s.highlight_words,
+        is_hook: s.is_hook,
+        order_index: i,
+      };
+    });
     await admin.from("scenes").insert(scenesToInsert);
 
     await admin
@@ -223,6 +230,23 @@ ${stylePrompt}
         title_suggestion: result.title_suggestion,
       })
       .eq("id", project_id);
+
+    // Авто B-roll с Pexels (best effort — не блокируем ответ при ошибке)
+    try {
+      const brollRes = await fetch(`${SUPABASE_URL}/functions/v1/fetch-broll`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader!,
+          "Content-Type": "application/json",
+          apikey: ANON,
+        },
+        body: JSON.stringify({ projectId: project_id, target: "broll_url", orientation: "portrait" }),
+      });
+      const brollJson = await brollRes.json().catch(() => ({}));
+      console.log("Auto B-roll applied:", brollJson?.updated ?? 0, "blocks");
+    } catch (e) {
+      console.warn("Auto B-roll skipped:", e);
+    }
 
     return new Response(
       JSON.stringify({ success: true, scene_count: result.scenes.length }),

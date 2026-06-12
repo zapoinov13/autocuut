@@ -23,6 +23,8 @@ interface Props {
   musicVolume?: number;
   captionsEnabled: boolean;
   subtitleY?: number;
+  trimStart?: number | null;
+  trimEnd?: number | null;
 }
 
 const QUALITIES = [
@@ -49,7 +51,11 @@ async function loadVideoElement(src: string): Promise<HTMLVideoElement> {
 }
 
 export const ExportDialog = (props: Props) => {
-  const { trigger, projectTitle, videoUrl, words, scenes, subtitleStyle: sub, format, musicUrl, musicVolume = 20, captionsEnabled, subtitleY = 80 } = props;
+  const {
+    trigger, projectTitle, videoUrl, words, scenes, subtitleStyle: sub, format,
+    musicUrl, musicVolume = 20, captionsEnabled, subtitleY = 80,
+    trimStart = null, trimEnd = null,
+  } = props;
   const [quality, setQuality] = useState("1080p");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -138,21 +144,24 @@ export const ExportDialog = (props: Props) => {
 
       recorder.start(1000);
 
-      mainVideo.currentTime = 0;
+      mainVideo.currentTime = trimStart ?? 0;
       await mainVideo.play();
-      if (musicEl) { musicEl.currentTime = 0; musicEl.play(); }
+      if (musicEl) { musicEl.currentTime = trimStart ?? 0; musicEl.play(); }
 
-      const totalDuration = mainVideo.duration;
+      const trimIn = trimStart ?? 0;
+      const trimOut = trimEnd ?? mainVideo.duration;
+      const exportDuration = Math.max(0.1, trimOut - trimIn);
 
       // Render loop
       const drawFrame = () => {
-        if (cancelRef.current || mainVideo.ended || mainVideo.currentTime >= totalDuration) {
+        if (cancelRef.current || mainVideo.currentTime >= trimOut || mainVideo.ended) {
           recorder.stop();
           mainVideo.pause();
           if (musicEl) musicEl.pause();
           return;
         }
-        const t = mainVideo.currentTime;
+        const absT = mainVideo.currentTime;
+        const t = absT - trimIn;
         const scene = scenes.find((s) => t >= s.start_time && t < s.end_time);
 
         // background
@@ -188,7 +197,7 @@ export const ExportDialog = (props: Props) => {
           drawSubtitles(ctx, words, t, scene, sub, W, H, subtitleY);
         }
 
-        setProgress(Math.min(99, (t / totalDuration) * 100));
+        setProgress(Math.min(99, (t / exportDuration) * 100));
         requestAnimationFrame(drawFrame);
       };
       drawFrame();

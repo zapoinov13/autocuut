@@ -135,27 +135,40 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
   return (
     <div className="space-y-4">
       {/* Preview */}
-      <div className="bg-black rounded-xl overflow-hidden aspect-video relative">
+      <div className="bg-black rounded-2xl overflow-hidden aspect-video relative border border-border/40 shadow-elevated">
         <video ref={videoRef} className="w-full h-full object-contain" muted playsInline />
         <audio ref={audioRef} src={audioUrl ?? undefined}
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)} />
         {currentSeg && (
-          <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2.5 py-1.5 rounded-lg border border-white/10">
             Сегмент #{currentSeg.order_index + 1} · {currentSeg.reason}
           </div>
         )}
+        {!playing && (
+          <button
+            type="button"
+            onClick={toggle}
+            className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"
+          >
+            <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-2xl">
+              <Play className="h-7 w-7 text-black fill-black ml-1" />
+            </div>
+          </button>
+        )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button size="icon" onClick={toggle}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button>
-        <div className="text-xs text-muted-foreground font-mono">{fmt(t)} / {fmt(total)}</div>
+      <div className="flex items-center gap-3 px-1">
+        <Button size="icon" variant="outline" className="rounded-xl h-10 w-10" onClick={toggle}>
+          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </Button>
+        <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmt(t)} / {fmt(total)}</div>
         <Music className="h-4 w-4 text-primary ml-auto" />
-        <span className="text-xs text-muted-foreground">{data.segments.length} сегментов · {data.clips.length} клипов</span>
+        <span className="text-xs text-muted-foreground">{data.segments.length} сегм. · {data.clips.length} клипов</span>
       </div>
 
       {/* Timeline strip */}
-      <div className="bg-surface-1 border border-border/40 rounded-xl p-3 overflow-x-auto">
+      <div className="bg-surface-1 border border-border/50 rounded-2xl p-3 overflow-x-auto">
         <div className="relative h-20" style={{ width: `${total * pxPerSec}px`, minWidth: "100%" }}>
           {data.segments.map((s) => {
             const left = s.audio_start * pxPerSec;
@@ -188,7 +201,7 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
           const clip = data.clips.find((c) => c.id === s.clip_id);
           const isCur = currentSeg?.id === s.id;
           return (
-            <Card key={s.id} className={`p-3 flex items-center gap-3 ${isCur ? "border-primary" : "border-border/40"}`}>
+            <Card key={s.id} className={`p-3 flex items-center gap-3 rounded-xl transition-smooth ${isCur ? "border-primary bg-primary/5" : "border-border/40"}`}>
               {thumbs[s.clip_id] && <img src={thumbs[s.clip_id]} alt="" className="h-12 w-20 rounded object-cover shrink-0" />}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium">#{s.order_index + 1} · {fmt(s.audio_start)}-{fmt(s.audio_end)} · клип «{clip?.meta?.description ?? clip?.meta?.original_name ?? "?"}»</p>

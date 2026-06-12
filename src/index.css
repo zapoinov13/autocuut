@@ -108,4 +108,8 @@
     background-clip: text;
     color: transparent;
   }
+
+  .editor-panel {
+    @apply rounded-2xl border border-border/50 bg-gradient-card p-4 shadow-card;
+  }
 }

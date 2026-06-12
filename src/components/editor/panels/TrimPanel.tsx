@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatTime } from "@/lib/format";
@@ -18,16 +18,26 @@ interface Props {
 
 export const TrimPanel = ({ trigger, projectId, duration, trimStart, trimEnd }: Props) => {
   const qc = useQueryClient();
-  const [range, setRange] = useState<[number, number]>([trimStart ?? 0, trimEnd ?? duration]);
+  const [open, setOpen] = useState(false);
+  const [range, setRange] = useState<[number, number]>([trimStart ?? 0, trimEnd ?? (duration || 1)]);
+
+  useEffect(() => {
+    if (open) setRange([trimStart ?? 0, trimEnd ?? (duration || 1)]);
+  }, [open, trimStart, trimEnd, duration]);
 
   const save = async () => {
+    if (range[1] <= range[0]) {
+      toast.error("Конец должен быть позже начала");
+      return;
+    }
     await supabase.from("projects").update({ trim_start: range[0], trim_end: range[1] }).eq("id", projectId);
     qc.invalidateQueries({ queryKey: ["editor", projectId] });
     toast.success("Обрезка сохранена");
+    setOpen(false);
   };
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>{trigger}</SheetTrigger>
       <SheetContent className="w-[400px]">
         <SheetHeader><SheetTitle>Обрезать видео</SheetTitle></SheetHeader>

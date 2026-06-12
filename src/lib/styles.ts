@@ -63,7 +63,7 @@ export interface MontageStyle {
 
 export const DEFAULT_CUSTOM_STYLE: SubtitleStyle = {
   fontFamily: "Inter",
-  fontSize: 38,
+  fontSize: 34,
   fontWeight: 800,
   color: "#FFFFFF",
   highlightColor: "#FACC15",
@@ -91,7 +91,7 @@ export const STYLES: Record<StyleId, MontageStyle> = {
     emoji: "🔥",
     subtitleStyle: {
       fontFamily: "Anton",
-      fontSize: 44,
+      fontSize: 38,
       fontWeight: 400,
       color: "#FFFFFF",
       highlightColor: "#FACC15",
@@ -201,7 +201,7 @@ export const STYLES: Record<StyleId, MontageStyle> = {
     emoji: "✨",
     subtitleStyle: {
       fontFamily: "Poppins",
-      fontSize: 30,
+      fontSize: 28,
       fontWeight: 600,
       color: "#FFFFFF",
       highlightColor: "#A78BFA",
