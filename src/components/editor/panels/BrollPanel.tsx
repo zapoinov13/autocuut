@@ -226,7 +226,7 @@ export const BrollPanel = ({ trigger, projectId, userId, format, scenes }: Props
             </div>
             <ul className="text-[11px] text-muted-foreground space-y-1 leading-relaxed">
               <li>• Учитывает <b>тему ролика</b>, не только текст блока.</li>
-              <li>• Блоки <b>5–9 сек</b>, клип не короче блока — без миганий.</li>
+              <li>• Блоки <b>5–9 сек</b>, клип не короче блока, без миганий.</li>
               <li>• Только <b>конкретные визуалы</b>, не стоковая абстракция.</li>
               <li>• <b>Два соседних блока</b> подряд с B-roll запрещены.</li>
               <li>• Покрытие <b>40–60%</b> блоков.</li>
@@ -318,7 +318,7 @@ export const BrollPanel = ({ trigger, projectId, userId, format, scenes }: Props
                     >
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="text-[10px] font-mono text-muted-foreground">
-                          {formatTime(d.start)}—{formatTime(d.end)} · {d.seconds}с
+                          {formatTime(d.start)}-{formatTime(d.end)} · {d.seconds}с
                         </span>
                         <Badge variant="outline" className={`text-[10px] gap-1 ${S.cls}`}>
                           <Icon className="h-2.5 w-2.5" />

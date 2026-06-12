@@ -111,7 +111,7 @@ export const ScenesPanel = ({ trigger, scenes, projectId, userId, format }: Prop
               {/* Header: timecode + hook badge */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-mono text-muted-foreground">
-                  {formatTime(scene.start_time)} — {formatTime(scene.end_time)}
+                  {formatTime(scene.start_time)} - {formatTime(scene.end_time)}
                 </span>
                 {scene.is_hook && (
                   <Badge className="bg-primary/20 text-primary border-0 text-[10px]">

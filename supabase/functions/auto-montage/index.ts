@@ -309,14 +309,17 @@ async function processMontage(
 
     await admin.from("projects").update({ status: "transcribing", error_message: null }).eq("id", project_id);
 
-    // 1. Audio → ElevenLabs
-    console.log("downloading audio", project.audio_path);
-    const { data: audioSigned } = await admin.storage.from("audio").createSignedUrl(project.audio_path, 3600);
-    const audioRes = await fetch(audioSigned!.signedUrl);
-    const audioBlob = await audioRes.blob();
+    // 1. Audio → ElevenLabs.
+    // ВАЖНО: передаём подписанную ссылку (cloud_storage_url), а НЕ скачиваем файл
+    // в память edge-функции. Раньше большие файлы убивали функцию по памяти,
+    // проект молча зависал на "transcribing" и монтаж не создавался.
+    console.log("signing audio url", project.audio_path);
+    const { data: audioSigned, error: signErr } = await admin.storage.from("audio")
+      .createSignedUrl(project.audio_path, 3600);
+    if (signErr || !audioSigned) throw new Error(`Не удалось подписать ссылку на аудио: ${signErr?.message ?? "unknown"}`);
 
     const fd = new FormData();
-    fd.append("file", audioBlob, "audio");
+    fd.append("cloud_storage_url", audioSigned.signedUrl);
     fd.append("model_id", "scribe_v2");
     fd.append("tag_audio_events", "false");
     fd.append("diarize", "false");
@@ -325,7 +328,15 @@ async function processMontage(
     });
     if (!scribeRes.ok) {
       const t = await scribeRes.text();
-      throw new Error(`ElevenLabs: ${t.slice(0, 200)}`);
+      let friendly = `ElevenLabs: ${t.slice(0, 200)}`;
+      try {
+        const j = JSON.parse(t);
+        const st = j?.detail?.status;
+        if (st === "quota_exceeded") friendly = "На ключе ElevenLabs закончились кредиты. Пополните баланс или обновите API ключ.";
+        else if (st === "detected_unusual_activity") friendly = "ElevenLabs отключил Free Tier для этого ключа. Нужен платный план или новый API ключ.";
+        else if (typeof j?.detail?.message === "string") friendly = `ElevenLabs: ${j.detail.message.slice(0, 200)}`;
+      } catch { /* оставляем сырой текст */ }
+      throw new Error(friendly);
     }
     const transcript = await scribeRes.json();
     const words: Word[] = (transcript.words ?? []).filter((w: any) => w.type !== "spacing" && w.text?.trim());

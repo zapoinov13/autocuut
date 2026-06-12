@@ -108,9 +108,11 @@ export const VideoPreview = ({
     const top = topVideoRef.current;
     const broll = brollVideoRef.current;
     const music = musicRef.current;
-    if (top) { playing ? top.play().catch(() => {}) : top.pause(); }
-    if (broll) { playing ? broll.play().catch(() => {}) : broll.pause(); }
-    if (music) { playing ? music.play().catch(() => {}) : music.pause(); }
+    for (const el of [top, broll, music]) {
+      if (!el) continue;
+      if (playing) el.play().catch(() => undefined);
+      else el.pause();
+    }
   }, [playing, activeScene?.top_video_url, activeScene?.broll_url, musicUrl]);
 
   useEffect(() => {
@@ -187,7 +189,7 @@ export const VideoPreview = ({
   const onSubPointerUp = (e: React.PointerEvent) => {
     if (!dragging) return;
     setDragging(false);
-    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     if (moved) onSubtitleYChange?.(localY);
   };
 

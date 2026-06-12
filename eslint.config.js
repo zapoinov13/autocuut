@@ -21,6 +21,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // Сгенерированный Lovable код повсеместно использует any.
+      // Понижаем до warning, чтобы панель Problems не тонула в шуме.
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 );

@@ -122,16 +122,11 @@ Deno.serve(async (req) => {
       throw new Error(`Не удалось получить ссылку на видео: ${signErr?.message}`);
     }
 
-    // Download video into edge function memory
-    console.log("Downloading video from", signed.signedUrl);
-    const videoRes = await fetch(signed.signedUrl);
-    if (!videoRes.ok) throw new Error(`Скачивание видео не удалось: ${videoRes.status}`);
-    const videoBlob = await videoRes.blob();
-    console.log("Video size:", videoBlob.size);
-
-    // Send to ElevenLabs Scribe
+    // ВАЖНО: передаём ElevenLabs подписанную ссылку (cloud_storage_url) вместо
+    // скачивания видео в память edge-функции. Большие файлы раньше убивали
+    // функцию по памяти, и проект молча зависал на "transcribing".
     const formData = new FormData();
-    formData.append("file", videoBlob, "video.mp4");
+    formData.append("cloud_storage_url", signed.signedUrl);
     formData.append("model_id", "scribe_v2");
     formData.append("tag_audio_events", "false");
     formData.append("diarize", "false");

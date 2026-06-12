@@ -190,8 +190,8 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
             <Card key={s.id} className={`p-3 flex items-center gap-3 ${isCur ? "border-primary" : "border-border/40"}`}>
               {thumbs[s.clip_id] && <img src={thumbs[s.clip_id]} alt="" className="h-12 w-20 rounded object-cover shrink-0" />}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium">#{s.order_index + 1} · {fmt(s.audio_start)}—{fmt(s.audio_end)} · клип «{clip?.meta?.description ?? clip?.meta?.original_name ?? "?"}»</p>
-                <p className="text-[11px] text-muted-foreground line-clamp-1">{s.reason ?? "—"}</p>
+                <p className="text-xs font-medium">#{s.order_index + 1} · {fmt(s.audio_start)}-{fmt(s.audio_end)} · клип «{clip?.meta?.description ?? clip?.meta?.original_name ?? "?"}»</p>
+                <p className="text-[11px] text-muted-foreground line-clamp-1">{s.reason ?? "-"}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <select

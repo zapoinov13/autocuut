@@ -118,7 +118,7 @@ const Dashboard = () => {
                   <Plus className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <h3 className="font-semibold mb-1">AI Авто-монтаж</h3>
-                <p className="text-xs text-muted-foreground">Загрузи видео — AI сделает остальное</p>
+                <p className="text-xs text-muted-foreground">Загрузи видео, AI сделает остальное</p>
               </Card>
             </Link>
             <Link to="/upload/montage">

@@ -221,7 +221,7 @@ ${stylePrompt}
       if (body?.project_id) {
         await admin.from("projects").update({ status: "failed", error_message: msg }).eq("id", body.project_id);
       }
-    } catch {}
+    } catch { /* ignore */ }
 
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,

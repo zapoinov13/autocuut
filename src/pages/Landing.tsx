@@ -46,7 +46,7 @@ const Landing = () => {
             AI-режиссёр для вертикальных видео
           </div>
           <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-6">
-            Загружай видео — <br />
+            Загружай видео <br />
             <span className="text-gradient">AI делает viral-монтаж</span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
@@ -86,7 +86,7 @@ const Landing = () => {
             {
               icon: Scissors,
               title: "AI-нарезка",
-              desc: "Анализ смысла и эмоций — сцены под темп выбранного стиля",
+              desc: "Анализ смысла и эмоций: сцены под темп выбранного стиля",
             },
             {
               icon: Wand2,
@@ -111,7 +111,7 @@ const Landing = () => {
           4 стиля монтажа
         </h2>
         <p className="text-muted-foreground text-center mb-16">
-          Выбери настроение — AI подстроит темп, субтитры и эффекты
+          Выбери настроение, и AI подстроит темп, субтитры и эффекты
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {STYLE_LIST.map((s) => (

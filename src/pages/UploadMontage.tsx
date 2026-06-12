@@ -51,7 +51,7 @@ const extractClipMeta = (f: File): Promise<{ duration: number; thumbDataUrl: str
     const finish = (duration: number, thumb: string) => {
       if (done) return;
       done = true;
-      try { URL.revokeObjectURL(url); } catch {}
+      try { URL.revokeObjectURL(url); } catch { /* ignore */ }
       resolve({ duration: isFinite(duration) && duration > 0 ? duration : 0, thumbDataUrl: thumb });
     };
 
@@ -141,10 +141,13 @@ const UploadMontage = () => {
     },
     maxFiles: 1, multiple: false,
   });
+  // Только форматы, которые принимает storage-бакет videos
+  // (mp4 / quicktime / webm / matroska). .avi, .m4v и .3gp бакет отклоняет,
+  // из-за чего загрузка падала с непонятной ошибкой "mime type not supported".
   const clipsDrop = useDropzone({
     onDrop: onClipsDrop,
     accept: {
-      "video/*": [".mp4", ".mov", ".webm", ".mkv", ".m4v", ".3gp", ".avi"],
+      "video/*": [".mp4", ".mov", ".webm", ".mkv"],
     },
     multiple: true,
   });
@@ -160,7 +163,7 @@ const UploadMontage = () => {
       const finish = (duration = 0) => {
         if (done) return;
         done = true;
-        try { URL.revokeObjectURL(a.src); } catch {}
+        try { URL.revokeObjectURL(a.src); } catch { /* ignore */ }
         resolve(isFinite(duration) && duration > 0 ? duration : 0);
       };
       const timeout = setTimeout(() => finish(0), 3000);
@@ -359,7 +362,7 @@ const UploadMontage = () => {
             <input {...clipsDrop.getInputProps()} />
             <UploadIcon className="h-6 w-6 text-primary mx-auto mb-1" />
             <p className="text-sm font-medium">+ Добавить клипы (можно сразу несколько)</p>
-            <p className="text-xs text-muted-foreground mt-0.5">MP4 / MOV / WEBM · до 500 МБ каждый</p>
+            <p className="text-xs text-muted-foreground mt-0.5">MP4 / MOV / WEBM / MKV · до 500 МБ каждый</p>
           </div>
 
           {clips.length > 0 && (

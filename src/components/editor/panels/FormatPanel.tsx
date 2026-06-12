@@ -10,9 +10,9 @@ import { POSITION_OPTIONS } from "@/lib/styles";
 export type VideoFormat = "stories" | "split" | "landscape";
 
 export const FORMATS: { id: VideoFormat; name: string; desc: string; icon: any; aspect: string }[] = [
-  { id: "stories", name: "Stories / Reels", desc: "9:16 — TikTok, Reels, Shorts", icon: Smartphone, aspect: "9 / 16" },
+  { id: "stories", name: "Stories / Reels", desc: "9:16 для TikTok, Reels, Shorts", icon: Smartphone, aspect: "9 / 16" },
   { id: "split", name: "Split 50/50", desc: "Сверху B-roll, снизу эксперт", icon: Layers, aspect: "9 / 16" },
-  { id: "landscape", name: "Landscape", desc: "16:9 — YouTube, презентации", icon: Monitor, aspect: "16 / 9" },
+  { id: "landscape", name: "Landscape", desc: "16:9 для YouTube и презентаций", icon: Monitor, aspect: "16 / 9" },
 ];
 
 interface Props {
@@ -84,7 +84,7 @@ export const FormatPanel = ({ trigger, projectId, format, subtitlePosition }: Pr
 
           {format === "split" && (
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
-              💡 В формате <strong>Split 50/50</strong> верхняя половина — это B-roll или твоё загруженное видео для каждой сцены. Открой панель <strong>Сцены</strong> чтобы назначить верхний клип для каждой сцены, или используй <strong>AI Auto B-rolls</strong> для авто-подбора через Pexels.
+              💡 В формате <strong>Split 50/50</strong> верхняя половина показывает B-roll или твоё загруженное видео для каждой сцены. Открой панель <strong>Сцены</strong> чтобы назначить верхний клип для каждой сцены, или используй <strong>AI Auto B-rolls</strong> для авто-подбора через Pexels.
             </div>
           )}
         </div>

@@ -75,7 +75,7 @@ export const ExportDialog = (props: Props) => {
       if (format === "split") {
         for (const s of scenes) {
           if (s.top_video_url) {
-            try { topMap.set(s.id, await loadVideoElement(s.top_video_url)); } catch {}
+            try { topMap.set(s.id, await loadVideoElement(s.top_video_url)); } catch { /* ignore */ }
           }
         }
       }
@@ -175,7 +175,7 @@ export const ExportDialog = (props: Props) => {
             try {
               if (topV.paused) topV.play().catch(() => {});
               drawCover(ctx, topV, 0, 0, W, halfH, 1);
-            } catch {}
+            } catch { /* ignore */ }
           }
           // Bottom half — main video
           drawCover(ctx, mainVideo, 0, halfH, W, halfH, scale);
@@ -243,7 +243,7 @@ export const ExportDialog = (props: Props) => {
           </div>
 
           <div className="text-xs text-muted-foreground p-3 rounded-md bg-surface-1 border border-border/40">
-            💡 Рендер идёт прямо в твоём браузере — бесплатно, без серверов.
+            💡 Рендер идёт прямо в твоём браузере: бесплатно, без серверов.
             Не закрывай вкладку. Длительность: примерно равна длине видео.
           </div>
 

@@ -43,6 +43,13 @@ const Processing = () => {
         setTimeout(() => navigate(`/editor/${id}`), 800);
       } else if (data.status === "failed") {
         setError(data.error_message ?? "Что-то пошло не так");
+      } else if (["transcribing", "analyzing"].includes(data.status)) {
+        // Watchdog: серверная функция могла умереть молча (память/таймаут).
+        // Если статус не обновлялся дольше 5 минут, не крутим спиннер вечно.
+        const updatedAt = new Date(data.updated_at).getTime();
+        if (Date.now() - updatedAt > 5 * 60 * 1000) {
+          setError("Обработка зависла: сервер не отвечает больше 5 минут. Нажмите «Повторить», чтобы запустить заново.");
+        }
       }
     };
 
