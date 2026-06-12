@@ -63,8 +63,9 @@ export const TimelinePanel = ({ projectId, audioPath }: Props) => {
         if (s) urls[c.id] = s.signedUrl;
         const thumbPath = c.meta?.thumb_path;
         if (thumbPath) {
-          const { data: pub } = supabase.storage.from("thumbnails").getPublicUrl(thumbPath);
-          ths[c.id] = pub.publicUrl;
+          // Бакет thumbnails приватный — нужна подписанная ссылка
+          const { data: th } = await supabase.storage.from("thumbnails").createSignedUrl(thumbPath, 6 * 3600);
+          if (th) ths[c.id] = th.signedUrl;
         }
       }
       setClipUrls(urls); setThumbs(ths);

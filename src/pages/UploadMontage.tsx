@@ -255,9 +255,9 @@ const UploadMontage = () => {
       });
       await Promise.all(workers);
 
-      // Set thumbnail to first clip
-      const { data: thumb0 } = supabase.storage.from("thumbnails").getPublicUrl(`${user.id}/${project.id}/clip_0.jpg`);
-      await supabase.from("projects").update({ thumbnail_url: thumb0.publicUrl }).eq("id", project.id);
+      // Set thumbnail to first clip. Бакет приватный, поэтому храним путь,
+      // а подписанную ссылку дашборд создаёт при отображении.
+      await supabase.from("projects").update({ thumbnail_url: `${user.id}/${project.id}/clip_0.jpg` }).eq("id", project.id);
 
       setProgress(90);
       setStage("Запускаем AI...");

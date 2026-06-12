@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sparkles, Plus, Video, LogOut, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { formatDuration } from "@/lib/format";
+import { thumbnailPath } from "@/lib/thumbs";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -37,7 +38,21 @@ const Dashboard = () => {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      // Бакет thumbnails приватный — подписываем ссылки на миниатюры пачкой
+      const paths = (data ?? [])
+        .map((p) => thumbnailPath(p.thumbnail_url))
+        .filter((p): p is string => !!p);
+      const signedByPath = new Map<string, string>();
+      if (paths.length) {
+        const { data: signed } = await supabase.storage.from("thumbnails").createSignedUrls(paths, 3600);
+        for (const s of signed ?? []) {
+          if (s.signedUrl && s.path) signedByPath.set(s.path, s.signedUrl);
+        }
+      }
+      return (data ?? []).map((p) => {
+        const path = thumbnailPath(p.thumbnail_url);
+        return { ...p, thumbnail_url: path ? signedByPath.get(path) ?? null : null };
+      });
     },
     enabled: !!user,
   });

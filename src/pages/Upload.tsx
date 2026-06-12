@@ -92,7 +92,6 @@ const Upload = () => {
         .from("thumbnails")
         .upload(thumbPath, thumbnail, { contentType: "image/jpeg", upsert: true });
       if (thumbErr) console.warn("Thumbnail upload failed:", thumbErr.message);
-      const { data: thumbUrl } = supabase.storage.from("thumbnails").getPublicUrl(thumbPath);
       setProgress(25);
 
       // 4. Upload video
@@ -111,7 +110,8 @@ const Upload = () => {
         .update({
           video_path: videoPath,
           video_url: signed?.signedUrl,
-          thumbnail_url: thumbUrl.publicUrl,
+          // Бакет thumbnails приватный — храним путь, подписываем при отображении
+          thumbnail_url: thumbPath,
         })
         .eq("id", project.id);
 
