@@ -86,9 +86,29 @@ Deno.serve(async (req) => {
     await admin.from("projects").update({ status: "analyzing" }).eq("id", project_id);
 
     // Build a compact transcript with timestamps for the AI
-    const words = subs.words as { text: string; start: number; end: number }[];
+    const trimStart = Number(project.trim_start) || 0;
+    const trimEnd = project.trim_end != null ? Number(project.trim_end) : null;
+    const clipDuration = Number(project.duration) || 0;
+    let words = (subs.words as { text: string; start: number; end: number }[]);
+    const maxWordEnd = words.length ? Math.max(...words.map((w) => w.end)) : 0;
+
+    // Trim только если субтитры в абсолютной шкале исходного видео (Magic Clips child
+    // уже хранит относительные таймкоды — их повторно резать нельзя).
+    const needsTrim = trimEnd != null && trimEnd > trimStart && maxWordEnd > clipDuration + 2;
+    if (needsTrim) {
+      words = words
+        .filter((w) => w.end > trimStart && w.start < trimEnd!)
+        .map((w) => ({
+          text: w.text,
+          start: Math.max(0, w.start - trimStart),
+          end: Math.min(trimEnd! - trimStart, w.end - trimStart),
+        }));
+    }
+
     const fullText = words.map((w) => w.text).join(" ");
-    const duration = project.duration ?? words[words.length - 1]?.end ?? 0;
+    const duration = needsTrim
+      ? trimEnd! - trimStart
+      : (clipDuration || maxWordEnd || 0);
 
     const stylePrompt = STYLE_PROMPTS[project.style] ?? STYLE_PROMPTS.viral_tiktok;
 

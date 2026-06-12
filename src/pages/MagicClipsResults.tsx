@@ -84,6 +84,7 @@ const MagicClipsResults = () => {
 
       await supabase.from("magic_clip_segments").update({ child_project_id: child.id }).eq("id", seg.id);
 
+      await supabase.from("projects").update({ status: "analyzing" }).eq("id", child.id);
       const { error: aErr } = await supabase.functions.invoke("analyze-scenes", { body: { project_id: child.id } });
       if (aErr) throw aErr;
 

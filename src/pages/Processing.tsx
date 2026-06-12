@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -34,15 +34,50 @@ const Processing = () => {
   const navigate = useNavigate();
   const [project, setProject] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const kickedRef = useRef(false);
 
-  const navigateWhenReady = (data: any) => {
+  const montageKick = useRef(false);
+  const uploadKick = useRef(false);
+  const postTranscribeKick = useRef(false);
+  const heygenTranscribeKick = useRef(false);
+
+  const navigateWhenReady = useCallback((data: any) => {
     if (data.kind === "magic_clips") navigate(`/magic-clips/${id}`);
     else navigate(`/editor/${id}`);
-  };
+  }, [id, navigate]);
+
+  const chainTranscribeThenAnalyze = useCallback((projectId: string) => {
+    supabase.functions.invoke("transcribe-video", { body: { project_id: projectId } })
+      .then(({ data, error: trErr }) => {
+        if (trErr || data?.success === false) return;
+        supabase.functions.invoke("analyze-scenes", { body: { project_id: projectId } });
+      });
+  }, []);
+
+  const kickPostTranscribe = useCallback(async (data: any) => {
+    if (postTranscribeKick.current) return;
+    const { data: subs } = await supabase.from("subtitles").select("id").eq("project_id", id!).maybeSingle();
+    if (!subs) return;
+
+    postTranscribeKick.current = true;
+
+    if (data.kind === "magic_clips") {
+      const clipCount = data.meta?.clip_count ?? 5;
+      supabase.functions.invoke("magic-clips", { body: { project_id: id, clip_count: clipCount } })
+        .catch((e) => console.error("magic-clips", e));
+      return;
+    }
+
+    if (data.kind === "montage") return;
+
+    supabase.functions.invoke("analyze-scenes", { body: { project_id: id } })
+      .catch((e) => console.error("analyze-scenes", e));
+  }, [id]);
 
   useEffect(() => {
-    kickedRef.current = false;
+    montageKick.current = false;
+    uploadKick.current = false;
+    postTranscribeKick.current = false;
+    heygenTranscribeKick.current = false;
   }, [id]);
 
   useEffect(() => {
@@ -50,56 +85,41 @@ const Processing = () => {
     let cancelled = false;
 
     const maybeKickPipeline = async (data: any) => {
-      if (kickedRef.current) return;
-
-      // Montage застрял на uploading
-      if (data.kind === "montage" && data.status === "uploading") {
-        kickedRef.current = true;
+      // Montage: invoke не дошёл
+      if (!montageKick.current && data.kind === "montage" && data.status === "uploading") {
+        montageKick.current = true;
         supabase.functions.invoke("auto-montage", { body: { project_id: id } })
           .catch((e) => console.error("auto-montage kick", e));
         return;
       }
 
-      // Avatar: HeyGen рендерит
-      if (data.kind === "avatar" && data.status === "analyzing" && !data.video_path) {
-        const meta = data.meta ?? {};
-        if (meta.heygen_video_id) {
-          const { data: syncData, error: syncErr } = await supabase.functions.invoke("heygen-api", {
-            body: { action: "sync", project_id: id },
-          });
-          if (syncErr) console.error("heygen sync", syncErr);
-          if (syncData?.phase === "transcribing") {
-            kickedRef.current = true;
-            supabase.functions.invoke("transcribe-video", { body: { project_id: id } })
-              .then(({ data: tr, error: trErr }) => {
-                if (trErr || tr?.success === false) return;
-                supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
-              });
-          }
+      // Обычная загрузка: видео есть, но transcribe не запустился
+      if (!uploadKick.current && data.kind === "single" && data.status === "uploading" && data.video_path) {
+        uploadKick.current = true;
+        await supabase.from("projects").update({ status: "transcribing" }).eq("id", id);
+        chainTranscribeThenAnalyze(id);
+        return;
+      }
+
+      // HeyGen: poll каждые 3 сек пока видео не скачано (без блокировки ref)
+      if (data.kind === "avatar" && data.status === "analyzing" && !data.video_path && data.meta?.heygen_video_id) {
+        const { data: syncData, error: syncErr } = await supabase.functions.invoke("heygen-api", {
+          body: { action: "sync", project_id: id },
+        });
+        if (syncErr) {
+          console.error("heygen sync", syncErr);
+        } else if (syncData?.error) {
+          if (!cancelled) setError(syncData.error);
+        } else if (syncData?.phase === "transcribing" && !heygenTranscribeKick.current) {
+          heygenTranscribeKick.current = true;
+          chainTranscribeThenAnalyze(id);
         }
         return;
       }
 
-      // Avatar: видео скачано, нужна транскрипция
-      if (data.kind === "avatar" && data.status === "transcribing" && data.video_path && !kickedRef.current) {
-        kickedRef.current = true;
-        supabase.functions.invoke("transcribe-video", { body: { project_id: id } })
-          .then(({ data: tr, error: trErr }) => {
-            if (trErr || tr?.success === false) return;
-            supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
-          });
-        return;
-      }
-
-      // Magic Clips: транскрипция готова, запускаем нарезку
-      if (data.kind === "magic_clips" && data.status === "transcribing") {
-        const { data: subs } = await supabase.from("subtitles").select("id").eq("project_id", id).maybeSingle();
-        if (subs && !kickedRef.current) {
-          kickedRef.current = true;
-          const clipCount = (data.meta as any)?.clip_count ?? 5;
-          supabase.functions.invoke("magic-clips", { body: { project_id: id, clip_count: clipCount } })
-            .catch((e) => console.error("magic-clips kick", e));
-        }
+      // Транскрипция завершена → следующий шаг (analyze / magic-clips)
+      if (data.status === "transcribing" && data.video_path) {
+        await kickPostTranscribe(data);
       }
     };
 
@@ -144,7 +164,7 @@ const Processing = () => {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [id, navigate]);
+  }, [id, navigate, navigateWhenReady, chainTranscribeThenAnalyze, kickPostTranscribe]);
 
   const steps = project?.kind === "avatar" ? AVATAR_STEPS
     : project?.kind === "magic_clips" ? MAGIC_STEPS
@@ -171,7 +191,10 @@ const Processing = () => {
 
   const handleRetry = async () => {
     if (!id || !project) return;
-    kickedRef.current = false;
+    montageKick.current = false;
+    uploadKick.current = false;
+    postTranscribeKick.current = false;
+    heygenTranscribeKick.current = false;
     setError(null);
 
     if (project.kind === "montage") {
@@ -196,16 +219,13 @@ const Processing = () => {
         await supabase.functions.invoke("heygen-api", { body: { action: "sync", project_id: id } });
       } else {
         await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
-        await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
-        await supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
+        chainTranscribeThenAnalyze(id);
       }
       return;
     }
 
     await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
-    const { error: tErr } = await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
-    if (tErr) { toast.error(tErr.message); return; }
-    await supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
+    chainTranscribeThenAnalyze(id);
   };
 
   return (

@@ -65,11 +65,14 @@ async function syncHeygenVideo(
 
   const { data: signed } = await admin.storage.from("videos").createSignedUrl(videoPath, 60 * 60 * 24 * 7);
 
+  const { data: existing } = await admin.from("projects").select("meta, duration").eq("id", projectId).single();
+  const prevMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+
   await admin.from("projects").update({
     video_path: videoPath,
     video_url: signed?.signedUrl ?? null,
     status: "transcribing",
-    meta: { heygen_video_id: heygenVideoId, heygen_status: "completed", phase: "transcribing" },
+    meta: { ...prevMeta, heygen_video_id: heygenVideoId, heygen_status: "completed", phase: "transcribing" },
   }).eq("id", projectId);
 
   return { phase: "transcribing", status: "completed" };

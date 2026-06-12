@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
 - hook — первая фраза-крючок
 - reason — почему этот момент зайдёт (1 предложение)
 - Приоритет: эмоции, инсайты, провокации, практическая польза
-- Язык — как в оригинале`;
+- Язык — как в оригинале
+
+Верни строго JSON: {"clips":[{"start":0,"end":45,"title":"...","hook":"...","viral_score":85,"reason":"..."}]}`;
 
     const aiRes = await fetch(LOVABLE_AI, {
       method: "POST",
@@ -90,33 +92,7 @@ Deno.serve(async (req) => {
           { role: "system", content: systemPrompt },
           { role: "user", content: `Таймлайн:\n${timeline.join("\n")}\n\nПолный текст:\n${fullText}` },
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "magic_clips",
-            schema: {
-              type: "object",
-              properties: {
-                clips: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      start: { type: "number" },
-                      end: { type: "number" },
-                      title: { type: "string" },
-                      hook: { type: "string" },
-                      viral_score: { type: "number" },
-                      reason: { type: "string" },
-                    },
-                    required: ["start", "end", "title", "hook", "viral_score", "reason"],
-                  },
-                },
-              },
-              required: ["clips"],
-            },
-          },
-        },
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -127,7 +103,12 @@ Deno.serve(async (req) => {
 
     const aiJson = await aiRes.json();
     const txt = aiJson.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(txt);
+    let parsed: { clips?: unknown[] };
+    try {
+      parsed = JSON.parse(txt);
+    } catch {
+      throw new Error("AI вернул некорректный JSON");
+    }
     const clips = (parsed.clips ?? []) as {
       start: number; end: number; title: string; hook: string;
       viral_score: number; reason: string;

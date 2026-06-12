@@ -110,8 +110,8 @@ const Upload = () => {
         .update({
           video_path: videoPath,
           video_url: signed?.signedUrl,
-          // Бакет thumbnails приватный — храним путь, подписываем при отображении
           thumbnail_url: thumbPath,
+          status: "transcribing",
         })
         .eq("id", project.id);
 
