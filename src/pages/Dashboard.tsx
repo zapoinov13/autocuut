@@ -145,15 +145,17 @@ const Dashboard = () => {
               </Card>
             </Link>
             {[
-              { title: "Magic Clips", desc: "Шортсы из длинного видео", emoji: "✂️" },
-              { title: "AI Avatar", desc: "Видео с AI-аватаром", emoji: "🤖" },
+              { title: "Magic Clips", desc: "Шортсы из длинного видео", emoji: "✂️", to: "/upload/magic-clips", badge: "NEW" },
+              { title: "AI Avatar", desc: "Экспертное видео с HeyGen", emoji: "🤖", to: "/upload/avatar", badge: "HeyGen" },
             ].map((card) => (
-              <Card key={card.title} className="p-6 bg-gradient-card border-border/60 opacity-60 cursor-not-allowed h-full">
-                <div className="text-3xl mb-3">{card.emoji}</div>
-                <h3 className="font-semibold mb-1">{card.title}</h3>
-                <p className="text-xs text-muted-foreground">{card.desc}</p>
-                <Badge variant="outline" className="mt-3 text-[10px]">Скоро</Badge>
-              </Card>
+              <Link key={card.title} to={card.to}>
+                <Card className="p-6 bg-gradient-card border-primary/40 hover:border-primary hover:shadow-glow transition-smooth cursor-pointer h-full">
+                  <div className="text-3xl mb-3">{card.emoji}</div>
+                  <h3 className="font-semibold mb-1">{card.title}</h3>
+                  <p className="text-xs text-muted-foreground">{card.desc}</p>
+                  <Badge className="mt-3 text-[10px] bg-primary/20 text-primary border-0">{card.badge}</Badge>
+                </Card>
+              </Link>
             ))}
           </div>
         </section>
@@ -188,7 +190,9 @@ const Dashboard = () => {
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {projects.map((p) => {
                 const status = statusLabel[p.status] ?? statusLabel.uploading;
-                const link = p.status === "ready" ? `/editor/${p.id}` : `/processing/${p.id}`;
+                const link = p.status === "ready"
+                  ? p.kind === "magic_clips" ? `/magic-clips/${p.id}` : `/editor/${p.id}`
+                  : `/processing/${p.id}`;
                 return (
                   <Card key={p.id} className="overflow-hidden bg-gradient-card border-border/60 hover:border-primary/40 transition-smooth relative group">
                     <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">

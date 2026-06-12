@@ -1,16 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Sparkles, Loader2, AlertCircle, Check, FileText, Wand2 } from "lucide-react";
+import { Sparkles, Loader2, AlertCircle, Check, FileText, Wand2, Bot, Scissors } from "lucide-react";
 import { toast } from "sonner";
 
-const STEPS = [
+const DEFAULT_STEPS = [
   { key: "uploading", label: "Загрузка видео", icon: Loader2 },
   { key: "transcribing", label: "Распознаём речь", icon: FileText },
   { key: "analyzing", label: "AI собирает монтаж", icon: Wand2 },
+  { key: "ready", label: "Готово!", icon: Check },
+];
+
+const AVATAR_STEPS = [
+  { key: "uploading", label: "Создаём задачу", icon: Loader2 },
+  { key: "analyzing", label: "HeyGen рендерит аватар", icon: Bot },
+  { key: "transcribing", label: "Распознаём речь", icon: FileText },
+  { key: "analyzing2", label: "AI добавляет монтаж", icon: Wand2 },
+  { key: "ready", label: "Готово!", icon: Check },
+];
+
+const MAGIC_STEPS = [
+  { key: "uploading", label: "Загрузка видео", icon: Loader2 },
+  { key: "transcribing", label: "Распознаём речь", icon: FileText },
+  { key: "analyzing", label: "AI ищет viral-клипы", icon: Scissors },
   { key: "ready", label: "Готово!", icon: Check },
 ];
 
@@ -19,58 +34,109 @@ const Processing = () => {
   const navigate = useNavigate();
   const [project, setProject] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const kickedRef = useRef(false);
+
+  const navigateWhenReady = (data: any) => {
+    if (data.kind === "magic_clips") navigate(`/magic-clips/${id}`);
+    else navigate(`/editor/${id}`);
+  };
+
+  useEffect(() => {
+    kickedRef.current = false;
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
-
     let cancelled = false;
-    let kicked = false;
-    const fetchProject = async () => {
-      const { data, error } = await supabase.from("projects").select("*").eq("id", id).single();
-      if (cancelled) return;
-      if (error) {
-        setError(error.message);
+
+    const maybeKickPipeline = async (data: any) => {
+      if (kickedRef.current) return;
+
+      // Montage застрял на uploading
+      if (data.kind === "montage" && data.status === "uploading") {
+        kickedRef.current = true;
+        supabase.functions.invoke("auto-montage", { body: { project_id: id } })
+          .catch((e) => console.error("auto-montage kick", e));
         return;
       }
-      setProject(data);
-      // Авто-перезапуск: montage-проект застрял на uploading — значит invoke не дошёл.
-      if (!kicked && data.kind === "montage" && data.status === "uploading") {
-        kicked = true;
-        supabase.functions.invoke("auto-montage", { body: { project_id: id } })
-          .then(({ error }) => { if (error) console.error("auto-montage kick error", error); });
+
+      // Avatar: HeyGen рендерит
+      if (data.kind === "avatar" && data.status === "analyzing" && !data.video_path) {
+        const meta = data.meta ?? {};
+        if (meta.heygen_video_id) {
+          const { data: syncData, error: syncErr } = await supabase.functions.invoke("heygen-api", {
+            body: { action: "sync", project_id: id },
+          });
+          if (syncErr) console.error("heygen sync", syncErr);
+          if (syncData?.phase === "transcribing") {
+            kickedRef.current = true;
+            supabase.functions.invoke("transcribe-video", { body: { project_id: id } })
+              .then(({ data: tr, error: trErr }) => {
+                if (trErr || tr?.success === false) return;
+                supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
+              });
+          }
+        }
+        return;
       }
+
+      // Avatar: видео скачано, нужна транскрипция
+      if (data.kind === "avatar" && data.status === "transcribing" && data.video_path && !kickedRef.current) {
+        kickedRef.current = true;
+        supabase.functions.invoke("transcribe-video", { body: { project_id: id } })
+          .then(({ data: tr, error: trErr }) => {
+            if (trErr || tr?.success === false) return;
+            supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
+          });
+        return;
+      }
+
+      // Magic Clips: транскрипция готова, запускаем нарезку
+      if (data.kind === "magic_clips" && data.status === "transcribing") {
+        const { data: subs } = await supabase.from("subtitles").select("id").eq("project_id", id).maybeSingle();
+        if (subs && !kickedRef.current) {
+          kickedRef.current = true;
+          const clipCount = (data.meta as any)?.clip_count ?? 5;
+          supabase.functions.invoke("magic-clips", { body: { project_id: id, clip_count: clipCount } })
+            .catch((e) => console.error("magic-clips kick", e));
+        }
+      }
+    };
+
+    const fetchProject = async () => {
+      const { data, error: fetchErr } = await supabase.from("projects").select("*").eq("id", id).single();
+      if (cancelled) return;
+      if (fetchErr) { setError(fetchErr.message); return; }
+
+      setProject(data);
+      await maybeKickPipeline(data);
+
       if (data.status === "ready") {
-        setTimeout(() => navigate(`/editor/${id}`), 800);
+        setTimeout(() => navigateWhenReady(data), 800);
       } else if (data.status === "failed") {
         setError(data.error_message ?? "Что-то пошло не так");
       } else if (["transcribing", "analyzing"].includes(data.status)) {
-        // Watchdog: серверная функция могла умереть молча (память/таймаут).
-        // Если статус не обновлялся дольше 5 минут, не крутим спиннер вечно.
         const updatedAt = new Date(data.updated_at).getTime();
         if (Date.now() - updatedAt > 5 * 60 * 1000) {
-          setError("Обработка зависла: сервер не отвечает больше 5 минут. Нажмите «Повторить», чтобы запустить заново.");
+          setError("Обработка зависла больше 5 минут. Нажмите «Повторить».");
         }
       }
     };
 
     fetchProject();
-    const interval = setInterval(fetchProject, 2000);
+    const interval = setInterval(fetchProject, 3000);
 
-    // Realtime subscription
     const channel = supabase
       .channel(`project-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${id}` },
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${id}` },
         (payload) => {
           setProject(payload.new);
           if (payload.new.status === "ready") {
-            setTimeout(() => navigate(`/editor/${id}`), 800);
+            setTimeout(() => navigateWhenReady(payload.new), 800);
           } else if (payload.new.status === "failed") {
             setError((payload.new as any).error_message ?? "Что-то пошло не так");
           }
-        },
-      )
+        })
       .subscribe();
 
     return () => {
@@ -80,36 +146,65 @@ const Processing = () => {
     };
   }, [id, navigate]);
 
-  const currentStepIndex = project ? STEPS.findIndex((s) => s.key === project.status) : 0;
-  const progressPct =
-    project?.status === "ready" ? 100
-    : project?.status === "uploading" ? 25
-    : project?.status === "transcribing" ? 55
-    : project?.status === "analyzing" ? 85
-    : 10;
+  const steps = project?.kind === "avatar" ? AVATAR_STEPS
+    : project?.kind === "magic_clips" ? MAGIC_STEPS
+    : DEFAULT_STEPS;
+
+  const currentStepIndex = (() => {
+    if (!project) return 0;
+    if (project.status === "ready") return steps.length - 1;
+    if (project.kind === "avatar" && project.status === "analyzing" && project.video_path) {
+      return steps.findIndex((s) => s.key === "analyzing2");
+    }
+    const idx = steps.findIndex((s) => s.key === project.status || s.key.replace("2", "") === project.status);
+    return idx >= 0 ? idx : 0;
+  })();
+
+  const progressPct = project?.status === "ready" ? 100
+    : ((currentStepIndex + 0.5) / steps.length) * 100;
+
+  const subtitle = project?.kind === "avatar"
+    ? "HeyGen генерирует аватар, затем AI добавит субтитры"
+    : project?.kind === "magic_clips"
+    ? "AI ищет лучшие viral-моменты в вашем видео"
+    : "Это займёт от 30 секунд до пары минут";
 
   const handleRetry = async () => {
-    if (!id) return;
-    await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
+    if (!id || !project) return;
+    kickedRef.current = false;
     setError(null);
 
-    // Для авто-монтажа — дёргаем auto-montage, для обычного проекта — старую связку
-    if (project?.kind === "montage") {
+    if (project.kind === "montage") {
+      await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
       const { error: mErr } = await supabase.functions.invoke("auto-montage", { body: { project_id: id } });
       if (mErr) toast.error("Не удалось перезапустить", { description: mErr.message });
       return;
     }
 
+    if (project.kind === "magic_clips") {
+      await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
+      const { error: tErr } = await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
+      if (tErr) { toast.error(tErr.message); return; }
+      await supabase.functions.invoke("magic-clips", {
+        body: { project_id: id, clip_count: project.meta?.clip_count ?? 5 },
+      });
+      return;
+    }
+
+    if (project.kind === "avatar") {
+      if (!project.video_path) {
+        await supabase.functions.invoke("heygen-api", { body: { action: "sync", project_id: id } });
+      } else {
+        await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
+        await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
+        await supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
+      }
+      return;
+    }
+
+    await supabase.from("projects").update({ status: "transcribing", error_message: null }).eq("id", id);
     const { error: tErr } = await supabase.functions.invoke("transcribe-video", { body: { project_id: id } });
-    if (tErr) {
-      toast.error("Не удалось перезапустить", { description: tErr.message });
-      return;
-    }
-    const { data: freshProject } = await supabase.from("projects").select("status, error_message").eq("id", id).single();
-    if (freshProject?.status === "failed") {
-      setError(freshProject.error_message ?? "Распознавание не удалось");
-      return;
-    }
+    if (tErr) { toast.error(tErr.message); return; }
     await supabase.functions.invoke("analyze-scenes", { body: { project_id: id } });
   };
 
@@ -123,9 +218,7 @@ const Processing = () => {
           <h1 className="text-2xl font-bold mb-2">
             {error ? "Ошибка обработки" : project?.status === "ready" ? "Готово!" : "AI работает..."}
           </h1>
-          <p className="text-muted-foreground text-sm">
-            {error ? "Попробуйте ещё раз" : "Это займёт от 30 секунд до пары минут"}
-          </p>
+          <p className="text-muted-foreground text-sm">{error ? "Попробуйте ещё раз" : subtitle}</p>
         </div>
 
         {error ? (
@@ -145,27 +238,19 @@ const Processing = () => {
           <>
             <Progress value={progressPct} className="mb-6 h-2" />
             <div className="space-y-3">
-              {STEPS.map((step, i) => {
+              {steps.map((step, i) => {
                 const isDone = i < currentStepIndex || project?.status === "ready";
                 const isActive = i === currentStepIndex && project?.status !== "ready";
                 const Icon = step.icon;
                 return (
-                  <div
-                    key={step.key}
-                    className={`flex items-center gap-3 p-3 rounded-lg ${
-                      isActive ? "bg-primary/10" : isDone ? "opacity-60" : "opacity-40"
-                    }`}
-                  >
-                    <div
-                      className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                        isDone ? "bg-success/20" : isActive ? "bg-primary/20" : "bg-surface-3"
-                      }`}
-                    >
-                      {isDone ? (
-                        <Check className="h-4 w-4 text-success" />
-                      ) : (
-                        <Icon className={`h-4 w-4 ${isActive ? "text-primary animate-spin" : "text-muted-foreground"}`} />
-                      )}
+                  <div key={step.key} className={`flex items-center gap-3 p-3 rounded-lg ${
+                    isActive ? "bg-primary/10" : isDone ? "opacity-60" : "opacity-40"
+                  }`}>
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                      isDone ? "bg-success/20" : isActive ? "bg-primary/20" : "bg-surface-3"
+                    }`}>
+                      {isDone ? <Check className="h-4 w-4 text-success" />
+                        : <Icon className={`h-4 w-4 ${isActive ? "text-primary animate-spin" : "text-muted-foreground"}`} />}
                     </div>
                     <span className={`text-sm ${isActive ? "font-medium" : ""}`}>{step.label}</span>
                   </div>

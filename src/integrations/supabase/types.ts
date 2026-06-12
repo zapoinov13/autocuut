@@ -53,6 +53,51 @@ export type Database = {
         }
         Relationships: []
       }
+      magic_clip_segments: {
+        Row: {
+          id: string
+          project_id: string
+          user_id: string
+          order_index: number
+          start_time: number
+          end_time: number
+          title: string
+          hook: string
+          viral_score: number | null
+          reason: string | null
+          child_project_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_id: string
+          order_index?: number
+          start_time: number
+          end_time: number
+          title?: string
+          hook?: string
+          viral_score?: number | null
+          reason?: string | null
+          child_project_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_id?: string
+          order_index?: number
+          start_time?: number
+          end_time?: number
+          title?: string
+          hook?: string
+          viral_score?: number | null
+          reason?: string | null
+          child_project_id?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       montage_clips: {
         Row: {
           created_at: string
@@ -178,6 +223,7 @@ export type Database = {
           format: string
           id: string
           kind: string
+          meta: Json
           music_url: string | null
           music_volume: number
           status: Database["public"]["Enums"]["project_status"]
@@ -206,6 +252,7 @@ export type Database = {
           format?: string
           id?: string
           kind?: string
+          meta?: Json
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]
@@ -234,6 +281,7 @@ export type Database = {
           format?: string
           id?: string
           kind?: string
+          meta?: Json
           music_url?: string | null
           music_volume?: number
           status?: Database["public"]["Enums"]["project_status"]

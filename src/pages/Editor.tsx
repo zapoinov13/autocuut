@@ -190,6 +190,8 @@ const Editor = () => {
           format={format}
           musicUrl={project.music_url as any}
           musicVolume={project.music_volume ?? 20}
+          trimStart={project.trim_start as number | null}
+          trimEnd={project.trim_end as number | null}
         />
       ) : (
         <div className="bg-surface-1 rounded-2xl flex items-center justify-center"

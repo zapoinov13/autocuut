@@ -10,6 +10,9 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
 import UploadMontage from "./pages/UploadMontage";
+import UploadMagicClips from "./pages/UploadMagicClips";
+import UploadAvatar from "./pages/UploadAvatar";
+import MagicClipsResults from "./pages/MagicClipsResults";
 import Processing from "./pages/Processing";
 import Editor from "./pages/Editor";
 import NotFound from "./pages/NotFound.tsx";
@@ -29,6 +32,9 @@ const App = () => (
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
             <Route path="/upload/montage" element={<ProtectedRoute><UploadMontage /></ProtectedRoute>} />
+            <Route path="/upload/magic-clips" element={<ProtectedRoute><UploadMagicClips /></ProtectedRoute>} />
+            <Route path="/upload/avatar" element={<ProtectedRoute><UploadAvatar /></ProtectedRoute>} />
+            <Route path="/magic-clips/:id" element={<ProtectedRoute><MagicClipsResults /></ProtectedRoute>} />
             <Route path="/processing/:id" element={<ProtectedRoute><Processing /></ProtectedRoute>} />
             <Route path="/editor/:id" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

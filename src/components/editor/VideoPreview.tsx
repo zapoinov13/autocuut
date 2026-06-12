@@ -20,12 +20,15 @@ interface Props {
   subtitleY?: number;
   onSubtitleYChange?: (y: number) => void;
   onEditSubtitle?: () => void;
+  trimStart?: number | null;
+  trimEnd?: number | null;
 }
 
 export const VideoPreview = ({
   videoUrl, subtitleStyle: sub, words, scenes,
   format = "stories", musicUrl, musicVolume = 20,
   subtitleY = 80, onSubtitleYChange, onEditSubtitle,
+  trimStart = null, trimEnd = null,
 }: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const topVideoRef = useRef<HTMLVideoElement>(null);
@@ -38,9 +41,13 @@ export const VideoPreview = ({
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
 
+  const trimIn = trimStart ?? 0;
+  const relativeTime = currentTime - trimIn;
+  const effectiveDuration = Math.max(0, (trimEnd ?? (duration || 0)) - trimIn);
+
   const activeScene = useMemo(
-    () => scenes.find((s) => currentTime >= s.start_time && currentTime < s.end_time),
-    [scenes, currentTime],
+    () => scenes.find((s) => relativeTime >= s.start_time && relativeTime < s.end_time),
+    [scenes, relativeTime],
   );
 
   // Group words into stable phrase-chunks (CapCut/Submagic style)
@@ -80,9 +87,9 @@ export const VideoPreview = ({
 
   const currentChunk = useMemo(() => {
     if (!chunks.length) return null;
-    const c = chunks.find((c) => currentTime >= c.start && currentTime < c.end);
+    const c = chunks.find((c) => relativeTime >= c.start && relativeTime < c.end);
     return c ?? null;
-  }, [chunks, currentTime]);
+  }, [chunks, relativeTime]);
 
   const visibleWords = currentChunk?.words ?? [];
 
@@ -96,12 +103,18 @@ export const VideoPreview = ({
     if (!v) return;
     let raf: number;
     const tick = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (trimEnd != null && v.currentTime >= trimEnd) {
+        v.pause();
+        v.currentTime = trimIn;
+      }
       setCurrentTime(v.currentTime);
       raf = requestAnimationFrame(tick);
     };
     if (playing) raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+  }, [playing, trimEnd, trimIn]);
 
   // Sync top/broll videos and music with main video
   useEffect(() => {
@@ -122,11 +135,11 @@ export const VideoPreview = ({
 
   const zoomScale = useMemo(() => {
     if (!activeScene) return 1;
-    const progress = (currentTime - activeScene.start_time) / Math.max(0.01, activeScene.end_time - activeScene.start_time);
+    const progress = (relativeTime - activeScene.start_time) / Math.max(0.01, activeScene.end_time - activeScene.start_time);
     if (activeScene.zoom === "in") return 1 + progress * 0.15;
     if (activeScene.zoom === "out") return 1.15 - progress * 0.15;
     return 1;
-  }, [activeScene, currentTime]);
+  }, [activeScene, relativeTime]);
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
@@ -137,10 +150,11 @@ export const VideoPreview = ({
   const seek = useCallback((t: number) => {
     const v = videoRef.current;
     if (!v) return;
-    v.currentTime = Math.max(0, Math.min(duration, t));
+    const abs = trimIn + Math.max(0, Math.min(effectiveDuration, t));
+    v.currentTime = abs;
     setCurrentTime(v.currentTime);
     if (musicRef.current) musicRef.current.currentTime = v.currentTime;
-  }, [duration]);
+  }, [trimIn, effectiveDuration]);
 
   const toggleMute = () => {
     const v = videoRef.current;
@@ -233,7 +247,10 @@ export const VideoPreview = ({
               style={{ transform: `scale(${zoomScale})` }}
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
-              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              onLoadedMetadata={(e) => {
+                setDuration(e.currentTarget.duration);
+                if (trimIn > 0) e.currentTarget.currentTime = trimIn;
+              }}
               onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
               onClick={togglePlay}
               playsInline
@@ -248,7 +265,10 @@ export const VideoPreview = ({
           style={{ transform: `scale(${zoomScale})` }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration);
+            if (trimIn > 0) e.currentTarget.currentTime = trimIn;
+          }}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onClick={togglePlay}
           playsInline
@@ -315,7 +335,7 @@ export const VideoPreview = ({
           }}
         >
           {visibleWords.map((w, i) => {
-            const isActive = currentTime >= w.start && currentTime < w.end;
+            const isActive = relativeTime >= w.start && relativeTime < w.end;
             const cleaned = w.text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
             const isHighlight = isActive || highlightSet.has(cleaned);
             const color = isHighlight ? sub.highlightColor : sub.color;
@@ -350,9 +370,9 @@ export const VideoPreview = ({
       <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover/player:opacity-100 transition-opacity z-30">
         <div className="px-1 mb-2">
           <Slider
-            value={[currentTime]}
+            value={[Math.max(0, relativeTime)]}
             min={0}
-            max={duration || 1}
+            max={effectiveDuration || 1}
             step={0.05}
             onValueChange={(v) => seek(v[0])}
           />
@@ -371,7 +391,7 @@ export const VideoPreview = ({
             <Slider value={[muted ? 0 : volume]} min={0} max={1} step={0.05} onValueChange={handleVolume} />
           </div>
           <span className="text-xs font-mono ml-1 tabular-nums">
-            {formatDuration(currentTime)} / {formatDuration(duration)}
+            {formatDuration(Math.max(0, relativeTime))} / {formatDuration(effectiveDuration)}
           </span>
           <div className="ml-auto">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/15 hover:text-white" onClick={fullscreen}>
